@@ -85,31 +85,6 @@ class LongNardy:
 
         return state_tensor
 
-    def get_absolute_board(self):
-        """
-        Build a dictionary for the full board (points 1 to 24).
-        Each point is assigned exclusively to one color:
-          - Points 1-6: white home.
-          - Points 7-12: black table.
-          - Points 13-18: black home.
-          - Points 19-24: white table.
-        Returns a dict mapping point -> (occupant, count)
-        """
-        abs_board = {}
-        # White home: indices 0-5 -> points 1-6.
-        for i in range(6):
-            abs_board[i + 1] = ('white', self.white[i].item())
-        # White table: indices 6-11 -> points 19-24.
-        for i in range(6, 12):
-            abs_board[i - 6 + 19] = ('white', self.white[i].item())
-        # Black home: indices 0-5 -> points 13-18.
-        for i in range(6):
-            abs_board[i + 13] = ('black', self.black[i].item())
-        # Black table: indices 6-11 -> points 7-12.
-        for i in range(6, 12):
-            abs_board[i - 6 + 7] = ('black', self.black[i].item())
-        return abs_board        
-
     def roll_dice(self):
         """
         Roll dice for the turn. For a double, four moves are available.
