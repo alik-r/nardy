@@ -236,7 +236,7 @@ class LongNardy:
                 else:
                     # Bearing off move.
                     if can_bear_off:
-                        if pos == d or (d > pos and sum(board[pos+1:6]) == 0):
+                        if pos + 1 == d or (d > pos + 1 and sum(board[pos+1:6]) == 0):
                             valid_moves.append((pos, d, (d,)))
 
             # For each combined dice move.
