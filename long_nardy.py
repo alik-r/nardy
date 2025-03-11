@@ -191,7 +191,10 @@ class LongNardy:
         board = self.white if self.current_player == 'white' else self.black
         
         # Bearing off is allowed only when all 15 pieces are in home (indices 0-5).
-        pieces_in_home = sum(board[0:6])
+        if self.current_player == 'white':
+            pieces_in_home = sum(self.white[0:6]) + self.white_off
+        else:
+            pieces_in_home = sum(self.black[0:6]) + self.black_off
         can_bear_off = (pieces_in_home == 15)
 
         # Consider two kinds of dice usage.
