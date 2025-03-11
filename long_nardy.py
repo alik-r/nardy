@@ -1,5 +1,7 @@
 import random
 import copy
+import torch
+import numpy as np
 
 class LongNardy:
     """
@@ -20,19 +22,12 @@ class LongNardy:
       - A move that would result in a destination point having six pieces (i.e. forming a block)
         is legal only if at least one opponent checker is in his home.
       - Moreover, it is forbidden to build a block that would lock all 15 of the opponent's checkers.
-        
-    Reward logic:
-      - Every time a piece is borne off, a small reward (0.1) is given.
-      - When a game ends, the winner obtains a bonus:
-            - 1 point if the opponent has borne off at least one piece (Oyn),
-            - 2 points (Mars) if the opponent has borne off none.
-      - For simultaneous training, if the current agent is Black the total reward is multiplied by -1.
     """
 
     def __init__(self):
         # Each player has a 12-slot route.
-        self.white = [0] * 12
-        self.black = [0] * 12
+        self.white = np.zeros(12, dtype=np.int32)
+        self.black = np.zeros(12, dtype=np.int32)
         # Initial setup: all 15 pieces on the head.
         self.white[11] = 15   # White's head (absolute point 24)
         self.black[11] = 15   # Black's head (absolute point 12)
@@ -54,6 +49,67 @@ class LongNardy:
         # Roll dice to begin the first turn.
         self.roll_dice()
 
+    def get_tensor_representation(self):
+        """
+        Returns a tensor representation of the game state as described:
+        - 2 inputs for the number of borne-off pieces for white and black.
+        - 2 inputs for whether it is white or black move order.
+        - For each of the 24 fields:
+            - 1 input indicating if there is at least one white piece (1 if yes, 0 if no).
+            - 1 input indicating the number of white pieces minus 1 (0 if no white pieces).
+            - 1 input indicating if there is at least one black piece (1 if yes, 0 if no).
+            - 1 input indicating the number of black pieces minus 1 (0 if no black pieces).
+        Total tensor size: 2 (borne-off) + 2 (move order) + 24 * 4 (fields) = 100.
+        """
+        # Tensor to hold the game state.
+        state_tensor = torch.zeros(100, dtype=torch.float32)
+
+        # 1. Borne-off pieces.
+        state_tensor[0] = self.white_off
+        state_tensor[1] = self.black_off
+
+        # 2. Move order.
+        state_tensor[2] = 1 if self.current_player == 'white' else 0
+        state_tensor[3] = 1 if self.current_player == 'black' else 0
+
+        # 3. Board fields (24 fields, 4 inputs per field).
+        abs_board = self.get_absolute_board()
+        for point in range(1, 25):
+            occupant, count = abs_board.get(point, (None, 0))
+            if occupant == 'white':
+                state_tensor[4 + (point - 1) * 4] = 1  # At least one white piece.
+                state_tensor[4 + (point - 1) * 4 + 1] = max(0, count - 1)  # n - 1 white pieces.
+            elif occupant == 'black':
+                state_tensor[4 + (point - 1) * 4 + 2] = 1  # At least one black piece.
+                state_tensor[4 + (point - 1) * 4 + 3] = max(0, count - 1)  # n - 1 black pieces.
+
+        return state_tensor
+
+    def get_absolute_board(self):
+        """
+        Build a dictionary for the full board (points 1 to 24).
+        Each point is assigned exclusively to one color:
+          - Points 1-6: white home.
+          - Points 7-12: black table.
+          - Points 13-18: black home.
+          - Points 19-24: white table.
+        Returns a dict mapping point -> (occupant, count)
+        """
+        abs_board = {}
+        # White home: indices 0-5 -> points 1-6.
+        for i in range(6):
+            abs_board[i + 1] = ('white', self.white[i].item())
+        # White table: indices 6-11 -> points 19-24.
+        for i in range(6, 12):
+            abs_board[i - 6 + 19] = ('white', self.white[i].item())
+        # Black home: indices 0-5 -> points 13-18.
+        for i in range(6):
+            abs_board[i + 13] = ('black', self.black[i].item())
+        # Black table: indices 6-11 -> points 7-12.
+        for i in range(6, 12):
+            abs_board[i - 6 + 7] = ('black', self.black[i].item())
+        return abs_board        
+
     def roll_dice(self):
         """
         Roll dice for the turn. For a double, four moves are available.
@@ -71,8 +127,8 @@ class LongNardy:
         """
         Reset the game state.
         """
-        self.white = [0] * 12
-        self.black = [0] * 12
+        self.white = np.zeros(12, dtype=np.int32)
+        self.black = np.zeros(12, dtype=np.int32)
         self.white[11] = 15
         self.black[11] = 15
         self.white_off = 0
@@ -114,16 +170,16 @@ class LongNardy:
         abs_board = {}
         # White home: indices 0-5 -> points 1-6.
         for i in range(6):
-            abs_board[i+1] = ('white', self.white[i])
+            abs_board[i+1] = ('white', self.white[i].item())
         # White table: indices 6-11 -> points 19-24.
         for i in range(6, 12):
-            abs_board[i - 6 + 19] = ('white', self.white[i])
+            abs_board[i - 6 + 19] = ('white', self.white[i].item())
         # Black home: indices 0-5 -> points 13-18.
         for i in range(6):
-            abs_board[i+13] = ('black', self.black[i])
+            abs_board[i+13] = ('black', self.black[i].item())
         # Black table: indices 6-11 -> points 7-12.
         for i in range(6, 12):
-            abs_board[i - 6 + 7] = ('black', self.black[i])
+            abs_board[i - 6 + 7] = ('black', self.black[i].item())
         return abs_board
 
     def _is_locked(self, player, pos):
@@ -172,7 +228,7 @@ class LongNardy:
         opp_board = clone.black if opp == 'black' else clone.white
         for pos in range(12):
             if opp_board[pos] > 0 and clone._is_locked(opp, pos):
-                sim_locked += opp_board[pos]
+                sim_locked += opp_board[pos].item()
         return sim_locked == 15
 
     def get_valid_moves(self):
@@ -191,7 +247,7 @@ class LongNardy:
         board = self.white if self.current_player == 'white' else self.black
         
         # Bearing off is allowed only when all 15 pieces are in home (indices 0-5).
-        pieces_in_home = sum(board[0:6])
+        pieces_in_home = np.sum(board[0:6]).item()
         can_bear_off = (pieces_in_home == 15)
 
         # Consider two kinds of dice usage.
@@ -223,7 +279,7 @@ class LongNardy:
                     # at least one opponent piece must be in his home.
                     if board[new_pos] + 1 == 6:
                         opp_home = (self.black[0:6] if self.current_player == 'white' else self.white[0:6])
-                        if sum(opp_home) == 0:
+                        if np.sum(opp_home).item() == 0:
                             continue
                         # Also, simulate the move to ensure not all opponent pieces become blocked.
                         candidate = (pos, d, (d,))
@@ -233,7 +289,7 @@ class LongNardy:
                 else:
                     # Bearing off move.
                     if can_bear_off:
-                        if pos == d or (d > pos and sum(board[pos+1:6]) == 0):
+                        if pos == d or (d > pos and np.sum(board[pos+1:6]).item() == 0):
                             valid_moves.append((pos, d, (d,)))
 
             # For each combined dice move.
@@ -242,7 +298,7 @@ class LongNardy:
                 if new_pos >= 0:
                     if board[new_pos] + 1 == 6:
                         opp_home = (self.black[0:6] if self.current_player == 'white' else self.white[0:6])
-                        if sum(opp_home) == 0:
+                        if np.sum(opp_home).item() == 0:
                             continue
                         candidate = (pos, d, 'combined')
                         if self._would_block_all_opponent(candidate):
@@ -250,7 +306,7 @@ class LongNardy:
                     valid_moves.append((pos, d, 'combined'))
                 else:
                     if can_bear_off:
-                        if pos == d or (d > pos and sum(board[pos+1:6]) == 0):
+                        if pos == d or (d > pos and np.sum(board[pos+1:6]).item() == 0):
                             valid_moves.append((pos, d, 'combined'))
         return valid_moves
 
@@ -264,7 +320,6 @@ class LongNardy:
         
         Returns:
             state: current game state.
-            reward: reward from this action.
             done: whether the game is finished.
         """
         current = self.current_player
@@ -305,23 +360,13 @@ class LongNardy:
             die_val = dice_info[0]
             self.dice_remaining.remove(die_val)
 
-        reward = 0
-        done = self.is_finished()
-        if done:
-            if current == 'white' and self.white_off == 15:
-                bonus = 2 if self.black_off == 0 else 1
-                reward += bonus
-            elif current == 'black' and self.black_off == 15:
-                bonus = 2 if self.white_off == 0 else 1
-                reward += bonus
-
         # If no dice remain or no further moves are valid, end the turn.
         if len(self.dice_remaining) == 0 or len(self.get_valid_moves()) == 0:
             self.current_player = 'black' if current == 'white' else 'white'
             self.roll_dice()
 
         state = self.get_state()
-        return state, reward, done
+        return state
 
     def is_finished(self):
         """
@@ -351,8 +396,8 @@ class LongNardy:
         """
         return {
             'current_player': self.current_player,
-            'white_board': self.white.copy(),
-            'black_board': self.black.copy(),
+            'white_board': self.white.clone(),
+            'black_board': self.black.clone(),
             'white_off': self.white_off,
             'black_off': self.black_off,
             'dice_remaining': self.dice_remaining.copy()
