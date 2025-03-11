@@ -2,19 +2,22 @@ import random
 import copy
 import torch
 import numpy as np
+from itertools import combinations
+from numba import njit
 
 class LongNardy:
     """
     Board representation:
       - The game is played on a common board of 24 points.
-      - Each player's route is "unfolded" into 12 positions.
-         For White:
-            * Indices 0-5: home board (absolute points 1 to 6)
-            * Indices 6-11: table (absolute points 19 to 24, with index 11 = head, point 24)
-         For Black:
-            * Indices 0-5: home board (absolute points 13 to 18)
-            * Indices 6-11: table (absolute points 7 to 12, with index 11 = head, point 12)
-      - Movement is anticlockwise - a move subtracts the dice pips from the current index.
+      - Each player has pieces placed on the board as follows:
+        For White:
+            * Points 1 to 6: home board (represented by indices 0 to 5)
+            * Points 19 to 24: table (represented by indices 6 to 11)
+        For Black:
+            * Points 13 to 18: home board (represented by indices 12 to 17)
+            * Points 7 to 12: table (represented by indices 18 to 23)
+      - Movement is anticlockwise - a move subtracts the dice pips from the current point.
+      - The head for White is at **point 24** (index 11), and the head for Black is at **point 12** (index 23).
       
     Locking (prime) rules:
       - A piece is considered locked if the six consecutive absolute points (ahead in the moving direction)
@@ -25,19 +28,21 @@ class LongNardy:
     """
 
     def __init__(self):
-        # Each player has a 12-slot route.
-        self.white = np.zeros(12, dtype=np.int32)
-        self.black = np.zeros(12, dtype=np.int32)
+        # Initialize a 2x12 matrix where:
+        # - Row 0 represents white pieces
+        # - Row 1 represents black pieces
+        self.board = np.zeros(24, dtype=np.int32)
+
         # Initial setup: all 15 pieces on the head.
-        self.white[11] = 15   # White's head (absolute point 24)
-        self.black[11] = 15   # Black's head (absolute point 12)
+        self.board[11] = 15
+        self.board[23] = -15
 
         # Counters for borne-off pieces.
         self.white_off = 0
         self.black_off = 0
 
         # 'white' always starts.
-        self.current_player = 'white'
+        self.is_white = True
         
         # Dice roll for current turn.
         self.dice = []            # full dice roll for the turn
@@ -62,28 +67,33 @@ class LongNardy:
         Total tensor size: 2 (borne-off) + 2 (move order) + 24 * 4 (fields) = 100.
         """
         # Tensor to hold the game state.
-        state_tensor = torch.zeros(100, dtype=torch.float32)
-
-        # 1. Borne-off pieces.
+        state_tensor = np.zeros(100, dtype=np.float32)
+        
+        # Borne-off pieces
         state_tensor[0] = self.white_off
         state_tensor[1] = self.black_off
 
-        # 2. Move order.
-        state_tensor[2] = 1 if self.current_player == 'white' else 0
-        state_tensor[3] = 1 if self.current_player == 'black' else 0
+        # Move order
+        state_tensor[2] = 1 if self.current_player == 0 else 0
+        state_tensor[3] = 1 if self.current_player == 0 else 0
 
-        # 3. Board fields (24 fields, 4 inputs per field).
-        abs_board = self.get_absolute_board()
-        for point in range(1, 25):
-            occupant, count = abs_board.get(point, (None, 0))
-            if occupant == 'white':
-                state_tensor[4 + (point - 1) * 4] = 1  # At least one white piece.
-                state_tensor[4 + (point - 1) * 4 + 1] = max(0, count - 1)  # n - 1 white pieces.
-            elif occupant == 'black':
-                state_tensor[4 + (point - 1) * 4 + 2] = 1  # At least one black piece.
-                state_tensor[4 + (point - 1) * 4 + 3] = max(0, count - 1)  # n - 1 black pieces.
+        # Board representation without using dictionaries
+        white_board = self.white.astype(np.int32)
+        black_board = self.black.astype(np.int32)
 
-        return state_tensor
+        # Directly map white and black checkers to tensor
+        for i in range(12):
+            abs_pos = self._absolute_position('white', i) - 1
+            if white_board[i] > 0:
+                state_tensor[4 + abs_pos * 4] = 1  # White presence
+                state_tensor[4 + abs_pos * 4 + 1] = max(0, white_board[i] - 1)
+            
+            abs_pos = self._absolute_position('black', i) - 1
+            if black_board[i] > 0:
+                state_tensor[4 + abs_pos * 4 + 2] = 1  # Black presence
+                state_tensor[4 + abs_pos * 4 + 3] = max(0, black_board[i] - 1)
+        
+        return torch.tensor(state_tensor)
 
     def roll_dice(self):
         """
@@ -102,187 +112,133 @@ class LongNardy:
         """
         Reset the game state.
         """
-        self.white = np.zeros(12, dtype=np.int32)
-        self.black = np.zeros(12, dtype=np.int32)
-        self.white[11] = 15
-        self.black[11] = 15
+        self.board = np.zeros(24, dtype=np.int32)
+        self.board[11] = 15
+        self.board[23] = -15
         self.white_off = 0
         self.black_off = 0
-        self.current_player = 'white'
+        self.is_white = True
         self.roll_dice()
+        
+    @njit
+    def _is_locked(self, pos):
+        """
+        Check if the piece at board index pos (for the current player) is locked.
+        A piece is locked if, in the six absolute points immediately ahead (in anticlockwise order for white,
+        clockwise for black), every such point that exists on the board is occupied by the opponent.
+        """
+        # Define opponent's piece condition: negative values are for black, positive values are for white
+        opponent_sign = -1 if self.is_white else 1
 
-    def _absolute_position(self, player, pos):
-        """
-        Map a player's board index (0-11) to the common absolute board point (1-24).
-        For White:
-            0-5   -> points 1 to 6   (home)
-            6-11  -> points 19 to 24 (table; index 11 = head = 24)
-        For Black:
-            0-5   -> points 13 to 18 (home)
-            6-11  -> points 7 to 12  (table; index 11 = head = 12)
-        """
-        if player == 'white':
-            if pos < 6:
-                return pos + 1
-            else:
-                return pos - 6 + 19
-        else:  # black
-            if pos < 6:
-                return pos + 13
-            else:
-                return pos - 6 + 7
+        # White moves anticlockwise (higher to lower indices), Black moves clockwise (lower to higher indices)
+        step = -1 if self.is_white else 1
 
-    def get_absolute_board(self):
-        """
-        Build a dictionary for the full board (points 1 to 24).
-        Each point is assigned exclusively to one color:
-          - Points 1-6: white home.
-          - Points 7-12: black table.
-          - Points 13-18: black home.
-          - Points 19-24: white table.
-        Returns a dict mapping point -> (occupant, count)
-        """
-        abs_board = {}
-        # White home: indices 0-5 -> points 1-6.
-        for i in range(6):
-            abs_board[i+1] = ('white', self.white[i].item())
-        # White table: indices 6-11 -> points 19-24.
-        for i in range(6, 12):
-            abs_board[i - 6 + 19] = ('white', self.white[i].item())
-        # Black home: indices 0-5 -> points 13-18.
-        for i in range(6):
-            abs_board[i+13] = ('black', self.black[i].item())
-        # Black table: indices 6-11 -> points 7-12.
-        for i in range(6, 12):
-            abs_board[i - 6 + 7] = ('black', self.black[i].item())
-        return abs_board
-
-    def _is_locked(self, player, pos):
-        """
-        Check if the piece at board index pos (for the given player) is locked.
-        A piece is locked if, in the six absolute points immediately ahead (in anticlockwise order),
-        every such point that exists on the board is occupied by the opponent.
-        """
-        abs_pos = self._absolute_position(player, pos)
-        abs_board = self.get_absolute_board()
-        opp = 'black' if player == 'white' else 'white'
-        locked = True
+        # Check 6 consecutive positions ahead in the moving direction
         for offset in range(1, 7):
-            check_pos = abs_pos - offset
-            if check_pos < 1:
-                break  # reached borne-off area
-            occupant, count = abs_board[check_pos]
-            if occupant != opp or count == 0:
-                locked = False
+            check_pos = pos + step * offset
+            
+            # If the position is out of bounds (borne-off area), stop the check
+            if check_pos < 0 or check_pos >= 24:
                 break
-        return locked
+            
+            # If the opponent does not occupy the position, the piece is not locked
+            if (self.board[check_pos] * opponent_sign) <= 0:
+                return False
 
+        return True  # All positions are occupied by the opponent, so the piece is locked
+
+    @njit
     def _would_block_all_opponent(self, candidate_move):
         """
         Simulate applying candidate_move and check if it would block (lock) all 15 of the opponent's pieces.
         Returns True if after the move all opponent pieces are locked.
         """
-        clone = copy.deepcopy(self)
-        current = self.current_player
-        opp = 'black' if current == 'white' else 'white'
-        board = clone.white if current == 'white' else clone.black
-        from_pos, move_distance, _ = candidate_move
-        new_pos = from_pos - move_distance
-        # Apply move on clone
-        board[from_pos] -= 1
-        if new_pos >= 0:
-            board[new_pos] += 1
-        else:
-            if current == 'white':
-                clone.white_off += 1
-            else:
-                clone.black_off += 1
+        # Clone the current game state
+        clone_board = np.copy(self.board)
+        opp_sign = -1 if self.is_white else 1  # Opponent's sign: -1 for black, 1 for white
+        
+        # Decompose the candidate_move into its components
+        from_pos, move_distance = candidate_move
+        new_pos = from_pos - move_distance  # Compute the new position after the move
 
-        # Count opponent pieces that are locked.
+        # Apply the move on the cloned board
+        clone_board[from_pos] += opp_sign  # Remove the piece from the original position
+        clone_board[new_pos] -= opp_sign  # Place the piece at the new position
+
+        # Initialize locked pieces counter
         sim_locked = 0
-        opp_board = clone.black if opp == 'black' else clone.white
-        for pos in range(12):
-            if opp_board[pos] > 0 and clone._is_locked(opp, pos):
-                sim_locked += opp_board[pos].item()
+
+        # Get the positions where the opponent has pieces 
+        opponent_positions = np.where((clone_board * opp_sign > 0))[0]
+
+        # Check opponent pieces on the cloned board
+        for pos in opponent_positions:
+            if self._is_locked(pos):
+                    sim_locked += 1  # Increment locked pieces count
+        
+        # Return True if all opponent pieces are locked, otherwise False
         return sim_locked == 15
 
     def get_valid_moves(self):
         """
-        Generate and return a list of valid moves for the current player given the current dice_remaining.
-        
-        Each move is a tuple: (from_pos, move_distance, dice_info)
-         - from_pos: board index (0-11) from which a piece is moved.
-         - move_distance: total pips used.
-         - dice_info: either a tuple (d,) for a single-die move or 'combined' if using two dice.
-         
-        Bearing off moves (destination < 0) are included.
+        Generate and return a list of all valid moves for the current player given the current dice_remaining.
         Moves that violate the locking rules or would illegally form a block (prime) are filtered out.
         """
         valid_moves = []
         board = self.white if self.current_player == 'white' else self.black
+        opponent_home = self.black[:6] if self.current_player == 'white' else self.white[:6]
         
-        # Bearing off is allowed only when all 15 pieces are in home (indices 0-5).
-        pieces_in_home = np.sum(board[0:6]).item()
+        # Check if bearing off is allowed
+        pieces_in_home = board[:6].sum()
         can_bear_off = (pieces_in_home == 15)
 
-        # Consider two kinds of dice usage.
-        available_dice = self.dice_remaining.copy()
-        single_moves = set(available_dice)
-        combined_moves = set()
-        if len(available_dice) >= 2:
-            for i in range(len(available_dice)):
-                for j in range(i + 1, len(available_dice)):
-                    combined_moves.add(available_dice[i] + available_dice[j])
-                    
-        # For each board index with pieces.
+        # Precompute opponent home sum
+        opponent_home_count = opponent_home.sum()
+
+        # Collect single dice values and possible combined values
+        available_dice = self.dice_remaining
+        single_moves = available_dice
+        combined_moves = {sum(pair) for pair in combinations(available_dice, 2)} if len(available_dice) > 1 else set()
+
+        # Iterate through board positions
         for pos in range(12):
-            if board[pos] <= 0:
+            if board[pos] == 0:  # Skip empty positions early
                 continue
-            # Do not allow moves from a locked piece.
-            if self._is_locked(self.current_player, pos):
+            if self._is_locked(self.current_player, pos):  # Skip locked pieces
                 continue
-            # Enforce one move from the head (index 11) per turn.
-            if pos == 11 and self.head_moved:
+            if pos == 11 and self.head_moved:  # Enforce head move restriction
                 continue
 
-            # For each single-die move.
+            # Check single dice moves
             for d in single_moves:
                 new_pos = pos - d
-                # Normal move on board.
-                if new_pos >= 0:
-                    # Check: if the move would form a block (i.e. destination becomes 6), then
-                    # at least one opponent piece must be in his home.
-                    if board[new_pos] + 1 == 6:
-                        opp_home = (self.black[0:6] if self.current_player == 'white' else self.white[0:6])
-                        if np.sum(opp_home).item() == 0:
-                            continue
-                        # Also, simulate the move to ensure not all opponent pieces become blocked.
-                        candidate = (pos, d, (d,))
-                        if self._would_block_all_opponent(candidate):
-                            continue
-                    valid_moves.append((pos, d, (d,)))
-                else:
-                    # Bearing off move.
-                    if can_bear_off:
-                        if pos == d or (d > pos and np.sum(board[pos+1:6]).item() == 0):
-                            valid_moves.append((pos, d, (d,)))
 
-            # For each combined dice move.
+                if new_pos >= 0:  # Normal move
+                    if board[new_pos] == 5 and opponent_home_count == 0:  # Prime block rule
+                        continue
+                    if board[new_pos] == 5 and self._would_block_all_opponent((pos, d, (d,))):
+                        continue
+                    valid_moves.append((pos, d))
+
+                elif can_bear_off:  # Bearing off move
+                    if pos == d or (d > pos and board[pos+1:6].sum() == 0):
+                        valid_moves.append((pos, d))
+
+            # Check combined dice moves
             for d in combined_moves:
                 new_pos = pos - d
+
                 if new_pos >= 0:
-                    if board[new_pos] + 1 == 6:
-                        opp_home = (self.black[0:6] if self.current_player == 'white' else self.white[0:6])
-                        if np.sum(opp_home).item() == 0:
-                            continue
-                        candidate = (pos, d, 'combined')
-                        if self._would_block_all_opponent(candidate):
-                            continue
-                    valid_moves.append((pos, d, 'combined'))
-                else:
-                    if can_bear_off:
-                        if pos == d or (d > pos and np.sum(board[pos+1:6]).item() == 0):
-                            valid_moves.append((pos, d, 'combined'))
+                    if board[new_pos] == 5 and opponent_home_count == 0:
+                        continue
+                    if board[new_pos] == 5 and self._would_block_all_opponent((pos, d, 'combined')):
+                        continue
+                    valid_moves.append((pos, d))
+
+                elif can_bear_off:
+                    if pos == d or (d > pos and board[pos+1:6].sum() == 0):
+                        valid_moves.append((pos, d))
+
         return valid_moves
 
     def step(self, action):
