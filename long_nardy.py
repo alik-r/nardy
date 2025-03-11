@@ -54,6 +54,7 @@ class LongNardy:
         # Roll dice to begin the first turn.
         self.roll_dice()
 
+    @njit
     def get_tensor_representation(self):
         """
         Returns a tensor representation of the game state as described:
@@ -66,34 +67,37 @@ class LongNardy:
             - 1 input indicating the number of black pieces minus 1 (0 if no black pieces).
         Total tensor size: 2 (borne-off) + 2 (move order) + 24 * 4 (fields) = 100.
         """
-        # Tensor to hold the game state.
+        # Initialize the tensor to hold the game state
         state_tensor = np.zeros(100, dtype=np.float32)
-        
-        # Borne-off pieces
+
+        # Set borne-off pieces
         state_tensor[0] = self.white_off
         state_tensor[1] = self.black_off
 
-        # Move order
-        state_tensor[2] = 1 if self.current_player == 0 else 0
-        state_tensor[3] = 1 if self.current_player == 0 else 0
+        # Set move order (white's turn or black's turn)
+        state_tensor[2] = 1 if self.is_white else 0
+        state_tensor[3] = 1 if not self.is_white else 0
 
-        # Board representation without using dictionaries
-        white_board = self.white.astype(np.int32)
-        black_board = self.black.astype(np.int32)
-
-        # Directly map white and black checkers to tensor
-        for i in range(12):
-            abs_pos = self._absolute_position('white', i) - 1
-            if white_board[i] > 0:
-                state_tensor[4 + abs_pos * 4] = 1  # White presence
-                state_tensor[4 + abs_pos * 4 + 1] = max(0, white_board[i] - 1)
-            
-            abs_pos = self._absolute_position('black', i) - 1
-            if black_board[i] > 0:
-                state_tensor[4 + abs_pos * 4 + 2] = 1  # Black presence
-                state_tensor[4 + abs_pos * 4 + 3] = max(0, black_board[i] - 1)
+        # Access the board and use it directly for calculations
+        board = self.board
         
-        return torch.tensor(state_tensor)
+        # Vectorized calculation for presence of white and black pieces at each position
+        white_presence = (board > 0).astype(np.float32)  # 1 if white piece is present, else 0
+        black_presence = (board < 0).astype(np.float32)  # 1 if black piece is present, else 0
+
+        # Vectorized calculation for number of pieces (white and black)
+        num_white = np.maximum(0, board)  # White piece count (0 for no white pieces)
+        num_black = np.maximum(0, -board)  # Black piece count (0 for no black pieces)
+
+        # Directly populate the tensor for each position
+        for i in range(24):
+            base_index = 4 + i * 4
+            state_tensor[base_index] = white_presence[i]  # White presence (0 or 1)
+            state_tensor[base_index + 1] = num_white[i] - 1  # White pieces - 1 (0 if no white pieces)
+            state_tensor[base_index + 2] = black_presence[i]  # Black presence (0 or 1)
+            state_tensor[base_index + 3] = num_black[i] - 1  # Black pieces - 1 (0 if no black pieces)
+
+        return state_tensor
 
     def roll_dice(self):
         """
