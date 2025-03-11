@@ -135,16 +135,16 @@ class LongNardy:
         abs_pos = self._absolute_position(player, pos)
         abs_board = self.get_absolute_board()
         opp = 'black' if player == 'white' else 'white'
-        locked = True
+        valid_points_checked = 0
         for offset in range(1, 7):
             check_pos = abs_pos - offset
             if check_pos < 1:
-                break  # reached borne-off area
+                continue  # skip positions off board
+            valid_points_checked += 1
             occupant, count = abs_board[check_pos]
             if occupant != opp or count == 0:
-                locked = False
-                break
-        return locked
+                return False
+        return valid_points_checked > 0
 
     def _would_block_all_opponent(self, candidate_move):
         """
