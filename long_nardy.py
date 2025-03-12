@@ -108,7 +108,6 @@ class LongNardy:
 
     # @profile
     def apply_dice(self, state: State) -> list[State]:
-        # print("Applying dice for ", len(state.dice_remaining), " dice")
         results = []
 
         home_slice = slice(0, 6) if state.is_white else slice(18, 24)
@@ -123,9 +122,11 @@ class LongNardy:
             current_state = stack.pop()
 
             # Compute can_bear_off for the current state
-            pieces_in_home = current_state.board[home_slice].sum()
-            if not state.is_white:
-                pieces_in_home = -pieces_in_home
+            home_pieces = current_state.board[home_slice]
+            if state.is_white:
+                pieces_in_home = home_pieces[home_pieces > 0].sum()  # Only count white pieces
+            else:
+                pieces_in_home = -home_pieces[home_pieces < 0].sum()  # Only count black pieces
             pieces_in_home += getattr(current_state, off_attr)
             can_bear_off = (pieces_in_home == 15)
 

@@ -49,7 +49,7 @@ if __name__ == "__main__":
     white_wins = 0
     black_wins = 0
     start_time = perf_counter()
-    for _ in range(1):
+    for _ in range(20):
         if play():
             white_wins += 1
         else:
