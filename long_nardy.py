@@ -1,8 +1,4 @@
-import random
-import copy
-import torch
 import numpy as np
-from itertools import chain, permutations
 from state import State
 from concurrent.futures import ProcessPoolExecutor
 
@@ -99,17 +95,16 @@ class LongNardy:
         if state.is_white:
             if state.black_off > 0:
                 return False
+            opponent_positions = np.flatnonzero(state.board < 0)
         else:
             if state.white_off > 0:
                 return False
-
-        opp_sign = -1 if state.is_white else 1  # Opponent's sign: -1 for black, 1 for white
-
-        # Get the positions where the opponent has pieces 
-        opponent_positions = np.where((state.board * opp_sign > 0))[0]
-
-        # Check opponent pieces on the cloned board
-        return opponent_positions.size == 15 and all(self._is_locked(state, pos) for pos in opponent_positions)
+            opponent_positions = np.flatnonzero(state.board > 0)
+        
+        # Convert to list for faster iteration in Python
+        opponent_positions = opponent_positions.tolist()
+        
+        return all(self._is_locked(state, pos) for pos in opponent_positions)
 
     # @profile
     def apply_dice(self, state: State) -> list[State]:
@@ -186,7 +181,7 @@ class LongNardy:
                     else:
                         continue
                 elif self._is_blocking_opponent(current_state):
-                    print("Blocking opponent")
+                    # print("Blocking opponent")
                     continue
                 else:
                     # Regular move
