@@ -71,7 +71,7 @@ class LongNardy:
             positions.append(tuple(valid))
         return positions
         
-    @profile
+    # @profile
     def _is_locked(self, state: State, pos: int) -> bool:
         """
         Check if the piece at board index pos is locked.
@@ -91,28 +91,27 @@ class LongNardy:
         
         return all((state.board[p] * opponent_sign) > 0 for p in positions)
 
-    @profile
+    # @profile
     def _is_blocking_opponent(self, state: State):
         """
         Returns True if all opponent pieces are locked.
         """
-        opp_sign = -1 if state.is_white else 1  # Opponent's sign: -1 for black, 1 for white
+        if state.is_white:
+            if state.black_off > 0:
+                return False
+        else:
+            if state.white_off > 0:
+                return False
 
-        # Initialize locked pieces counter
-        sim_locked = 0
+        opp_sign = -1 if state.is_white else 1  # Opponent's sign: -1 for black, 1 for white
 
         # Get the positions where the opponent has pieces 
         opponent_positions = np.where((state.board * opp_sign > 0))[0]
 
         # Check opponent pieces on the cloned board
-        for pos in opponent_positions:
-            if self._is_locked(state, pos):
-                    sim_locked += 1  # Increment locked pieces count
-        
-        # Return True if all opponent pieces are locked, otherwise False
-        return sim_locked == 15
+        return opponent_positions.size == 15 and all(self._is_locked(state, pos) for pos in opponent_positions)
 
-    @profile
+    # @profile
     def apply_dice(self, state: State) -> list[State]:
         # print("Applying dice for ", len(state.dice_remaining), " dice")
         results = []

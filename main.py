@@ -42,8 +42,8 @@ def play():
 
 if __name__ == "__main__":
     random.seed(0)
-    # profiler = cProfile.Profile()
-    # profiler.enable()
+    profiler = cProfile.Profile()
+    profiler.enable()
 
     # example_one_action_play()
     white_wins = 0
@@ -54,7 +54,7 @@ if __name__ == "__main__":
             white_wins += 1
         else:
             black_wins += 1
-    # profiler.disable()
+    profiler.disable()
     
     end_time = perf_counter()
     print("Time taken:", end_time - start_time)
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
 
     # Print stats
-    # stream = io.StringIO()
-    # stats = pstats.Stats(profiler, stream=stream)
-    # stats.strip_dirs().sort_stats("cumulative").print_stats(10)  # Show top 10 slowest functions
-    # print(stream.getvalue())
+    stream = io.StringIO()
+    stats = pstats.Stats(profiler, stream=stream)
+    stats.strip_dirs().sort_stats("cumulative").print_stats(10)  # Show top 10 slowest functions
+    print(stream.getvalue())
