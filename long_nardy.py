@@ -2,7 +2,7 @@ import random
 import copy
 import torch
 import numpy as np
-from itertools import permutations
+from itertools import chain, permutations
 from state import State
 from concurrent.futures import ProcessPoolExecutor
 
@@ -34,32 +34,48 @@ class LongNardy:
         # Roll dice to begin the first turn.
         self.state.roll_dice()
         
-    def _is_locked(self, state: State, pos):
+    def _is_locked(self, state: State, pos: int) -> bool:
         """
         Check if the piece at board index pos is locked.
         A piece is locked if, in the six absolute points immediately ahead (in anticlockwise order for white,
         clockwise for black), every such point that exists on the board is occupied by the opponent.
         """
         # Define opponent's piece condition: negative values are for black, positive values are for white
-        opponent_sign = -1 if state.is_white else 1
+        opponent_sign = -1 if state.board[pos] > 0 else 1
 
-        # White moves anticlockwise (higher to lower indices), Black moves clockwise (lower to higher indices)
-        step = -1 if state.is_white else 1
+        # Define the range of positions to check based on the piece's position.
+        # For the white pieces it makes sure that the positions do not exceed 0.
+        # For the black pieces it makes sure that the positions do not exceed 12
+        # in case if it is in the 12-23 part of the board.
+        # It also account for the case for black when the piece jumps from 0 to 23.
+        if state.board[pos] > 0:
+            start = pos - 7 if pos > 5 else -1
+            end = pos - 1
+            positions = range(end, start, -1)
+        else:
+            if pos > 11:
+                start = pos - 7 if pos > 18 else 11
+                end = pos - 1
+                positions = range(end, start, -1)
+            else:
+                start = pos - 7 if pos > 6 else -1
+                end = pos - 1
+                first = range(end, start, -1)
+                if pos < 7:
+                    second = range(23, 18 + pos, -1)
+                    positions = chain(first, second)
+                else:
+                    positions = first
 
-        # Check 6 consecutive positions ahead in the moving direction
-        for offset in range(1, 7):
-            check_pos = pos + step * offset
-
-            if not state.is_white and check_pos < 0:
-                check_pos += 24
-            
-            # If the position is out of bounds (borne-off area), stop the check
-            if check_pos < 0 or check_pos >= 24:
-                break
-            
+        empty = True
+        for check_pos in positions:
+            empty = False
             # If the opponent does not occupy the position, the piece is not locked
             if (state.board[check_pos] * opponent_sign) <= 0:
                 return False
+            
+        if empty:
+            return False
 
         return True  # All positions are occupied by the opponent, so the piece is locked
 
@@ -84,17 +100,13 @@ class LongNardy:
         return sim_locked == 15
 
     def apply_dice(self, state: State) -> list[State]:
-        print("Applying dice for ", len(state.dice_remaining), " dice")
-        if len(state.dice_remaining) == 0:
-            print("No dice remaining")
-            return []
-        
+        # print("Applying dice for ", len(state.dice_remaining), " dice")
         results = []
 
         if state.is_white:
-            pieces_in_home = state.board[:6].sum()
+            pieces_in_home = state.board[:6].sum() + state.white_off
         else:
-            pieces_in_home = state.board[12:18].sum()
+            pieces_in_home = -state.board[12:18].sum() + state.black_off
 
         can_bear_off = (pieces_in_home == 15)
 
@@ -103,55 +115,63 @@ class LongNardy:
         stack = [state.copy()]
     
         while stack:
-            print("Stack size: ", len(stack))
+            # print("Stack size: ", len(stack))
             current_state = stack.pop()
-            print("Dice remaining: ", current_state.dice_remaining)
-            current_state.pretty_print()
+            # print("Dice remaining: ", current_state.dice_remaining)
+            # current_state.pretty_print()
 
             # If the dice are exhausted, continue to the next state
             if len(current_state.dice_remaining) == 0:
-                print("Dice exhausted")
+                # print("Dice exhausted")
                 continue
         
             dice = current_state.dice_remaining.pop()
 
             piece_positions = np.where((current_state.board * opp_sign < 0))[0]
-            print("Board: ", current_state.board)
-            print("Piece positions: ", piece_positions)
+            # print("Board: ", current_state.board)
+            # print("Piece positions: ", piece_positions)
 
             if len(piece_positions) == 0:
-                print("No pieces to move")            
+                # print("No pieces to move")            
                 results.append(current_state)
 
             valid_move_found = False  # Flag to track if any valid move was applied.
 
             for pos in piece_positions:
                 if self._is_locked(current_state, pos):  # Skip locked pieces
-                    print("Locked piece")
+                    # print("Locked piece")
                     continue
                 if pos == 11 and current_state.head_moved:  # Enforce head move restriction
-                    print("Head moved")
+                    # print("Head moved")
                     continue
 
                 new_pos = pos - dice
-                print("pos: ", pos, " new_pos: ", new_pos)
+                # print("pos: ", pos, " new_pos: ", new_pos)
 
+                # Handle wrap-around
                 if not current_state.is_white and new_pos < 0:
                     new_pos += 24
 
-                if current_state.board[new_pos] * opp_sign > 1:
-                    print("Opponent's piece at new position")
+                # Check if opponent's piece is at the new position
+                if current_state.board[new_pos] * opp_sign > 0:
+                    # print("Opponent's piece at new position")
                     continue
 
-                if (new_pos < 0 or (new_pos < 12 and pos >= 12 and current_state.is_white)) and can_bear_off:
-                    # Handle bearing off
-                    new_state = current_state.copy()
-                    new_state.board[pos] += opp_sign
-                    new_state.white_off += 1
-                    if len(new_state.dice_remaining) == 0:
-                        results.append(new_state)
-                    stack.append(new_state)
-                    valid_move_found = True
+                if (new_pos < 0 or (new_pos < 12 and pos >= 12 and not current_state.is_white)):
+                    if can_bear_off:
+                        # Handle bearing off
+                        new_state = current_state.copy()
+                        new_state.board[pos] += opp_sign
+                        if current_state.is_white:
+                            new_state.white_off += 1
+                        else:
+                            new_state.black_off += 1
+                        if len(new_state.dice_remaining) == 0:
+                            results.append(new_state)
+                        stack.append(new_state)
+                        valid_move_found = True
+                    else:
+                        continue
                 elif self._is_blocking_opponent(current_state):
                     print("Blocking opponent")
                     continue
@@ -164,15 +184,15 @@ class LongNardy:
                         results.append(new_state)
                     stack.append(new_state)
                     valid_move_found = True
-                    print("Added new state")
-                    new_state.pretty_print()
+                    # print("Added new state")
+                    # new_state.pretty_print()
 
                     if pos == 11 or pos == 23:
                         new_state.head_moved = True
 
             # If no valid move was found for this die, record the state.
             if not valid_move_found:
-                print("No valid move found for dice:", dice, "Recording current state as final.")
+                # print("No valid move found for dice:", dice, "Recording current state as final.")
                 results.append(current_state)
         return results
     

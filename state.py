@@ -36,7 +36,7 @@ class State:
         """
         Resets the state to initial state
         """
-        self.board = np.zeros(24, dtype=np.int32)
+        self.board.fill(0)
         self.board[11] = -15
         self.board[23] = 15
         self.white_off = 0
@@ -88,35 +88,25 @@ class State:
         Total tensor size: 2 (borne-off) + 2 (move order) + 24 * 4 (fields) = 100.
         """
         # Initialize the tensor to hold the game state
-        state_tensor = np.zeros(100, dtype=np.float32)
+        state_tensor = np.empty(100, dtype=np.float32)
 
-        # Set borne-off pieces
-        state_tensor[0] = self.white_off
-        state_tensor[1] = self.black_off
-
-        # Set move order (white's turn or black's turn)
-        state_tensor[2] = 1 if self.is_white else 0
-        state_tensor[3] = 1 if not self.is_white else 0
-
-        # Access the board and use it directly for calculations
-        board = self.board
+        # Set borne-off pieces and move order.
+        state_tensor[0:2] = [self.white_off, self.black_off]
+        state_tensor[2:4] = [1.0 if self.is_white else 0.0,
+                             0.0 if self.is_white else 1.0]
         
-        # Vectorized calculation for presence of white and black pieces at each position
-        white_presence = (board > 0).astype(np.float32)  # 1 if white piece is present, else 0
-        black_presence = (board < 0).astype(np.float32)  # 1 if black piece is present, else 0
+        # Vectorized encoding for board positions:
+        board = self.board.astype(np.float32)
+        white_presence = (board > 0).astype(np.float32)
+        black_presence = (board < 0).astype(np.float32)
 
-        # Vectorized calculation for number of pieces (white and black)
-        num_white = np.maximum(0, board)  # White piece count (0 for no white pieces)
-        num_black = np.maximum(0, -board)  # Black piece count (0 for no black pieces)
-
-        # Directly populate the tensor for each position
-        for i in range(24):
-            base_index = 4 + i * 4
-            state_tensor[base_index] = white_presence[i]  # White presence (0 or 1)
-            state_tensor[base_index + 1] = num_white[i] - 1  # White pieces - 1 (0 if no white pieces)
-            state_tensor[base_index + 2] = black_presence[i]  # Black presence (0 or 1)
-            state_tensor[base_index + 3] = num_black[i] - 1  # Black pieces - 1 (0 if no black pieces)
-
+        # Subtract one from the count where pieces exist (else zero)
+        white_count = np.maximum(board, 0) - 1
+        black_count = np.maximum(-board, 0) - 1
+        
+        # Stack and flatten (each point contributes 4 numbers)
+        field_tensor = np.column_stack((white_presence, white_count, black_presence, black_count)).flatten()
+        state_tensor[4:] = field_tensor
         return state_tensor
     
     def pretty_print(self):
@@ -131,7 +121,7 @@ class State:
         for i in range(12, 24):
             piece = self.board[i]
             piece_str = f"{piece:2d}" if piece != 0 else " ."
-            print(f"{i+1:2d} [{piece_str}]", end="  ")
+            print(f"{i:2d} [{piece_str}]", end="  ")
         
         print("\n-------------------------------------------------")
 
@@ -139,7 +129,7 @@ class State:
         for i in range(11, -1, -1):
             piece = self.board[i]
             piece_str = f"{piece:2d}" if piece != 0 else " ."
-            print(f"{i+1:2d} [{piece_str}]", end="  ")
+            print(f"{i:2d} [{piece_str}]", end="  ")
 
         print("\n-------------------------------------------------\n")
 
