@@ -1,6 +1,7 @@
 import cProfile
 import io
 import pstats
+import random
 from long_nardy import LongNardy
 from time import perf_counter
 
@@ -40,19 +41,20 @@ def play():
 #         print("Reward:", reward, "Done:", done)
 
 if __name__ == "__main__":
-    profiler = cProfile.Profile()
-    profiler.enable()
+    random.seed(0)
+    # profiler = cProfile.Profile()
+    # profiler.enable()
 
     # example_one_action_play()
     white_wins = 0
     black_wins = 0
     start_time = perf_counter()
-    for _ in range(1):
+    for _ in range(100):
         if play():
             white_wins += 1
         else:
             black_wins += 1
-    profiler.disable()
+    # profiler.disable()
     
     end_time = perf_counter()
     print("Time taken:", end_time - start_time)
@@ -61,7 +63,7 @@ if __name__ == "__main__":
 
 
     # Print stats
-    stream = io.StringIO()
-    stats = pstats.Stats(profiler, stream=stream)
-    stats.strip_dirs().sort_stats("cumulative").print_stats(10)  # Show top 10 slowest functions
-    print(stream.getvalue())
+    # stream = io.StringIO()
+    # stats = pstats.Stats(profiler, stream=stream)
+    # stats.strip_dirs().sort_stats("cumulative").print_stats(10)  # Show top 10 slowest functions
+    # print(stream.getvalue())

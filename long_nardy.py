@@ -30,55 +30,68 @@ class LongNardy:
 
     def __init__(self):
         self.state = State()
+        self.white_positions = self._precompute_white_positions()
+        self.black_positions = self._precompute_black_positions()
 
         # Roll dice to begin the first turn.
         self.state.roll_dice()
+
+    def _precompute_white_positions(self):
+        positions = []
+        for pos in range(24):
+            start = pos - 7 if pos > 5 else -1
+            end = pos - 1
+            pos_range = range(end, start, -1)
+            valid = [p for p in pos_range if 0 <= p < 24]
+            positions.append(tuple(valid))
+        return positions
+    
+    def _precompute_black_positions(self):
+        positions = []
+        for pos in range(24):
+            if pos > 11:
+                start = pos - 7 if pos > 18 else 11
+                end = pos - 1
+                pos_range = range(end, start, -1)
+            else:
+                if pos > 6:
+                    start = pos - 7
+                    end = pos - 1
+                    pos_range = range(end, start, -1)
+                else:
+                    start = pos - 7 if pos > 6 else -1
+                    end = pos - 1
+                    first = range(end, start, -1)
+                    if pos < 7:
+                        second = range(23, 18 + pos, -1)
+                        pos_range = list(first) + list(second)
+                    else:
+                        pos_range = first
+            valid = [p for p in pos_range if 0 <= p < 24]
+            positions.append(tuple(valid))
+        return positions
         
+    @profile
     def _is_locked(self, state: State, pos: int) -> bool:
         """
         Check if the piece at board index pos is locked.
         A piece is locked if, in the six absolute points immediately ahead (in anticlockwise order for white,
         clockwise for black), every such point that exists on the board is occupied by the opponent.
         """
-        # Define opponent's piece condition: negative values are for black, positive values are for white
-        opponent_sign = -1 if state.board[pos] > 0 else 1
-
-        # Define the range of positions to check based on the piece's position.
-        # For the white pieces it makes sure that the positions do not exceed 0.
-        # For the black pieces it makes sure that the positions do not exceed 12
-        # in case if it is in the 12-23 part of the board.
-        # It also account for the case for black when the piece jumps from 0 to 23.
-        if state.board[pos] > 0:
-            start = pos - 7 if pos > 5 else -1
-            end = pos - 1
-            positions = range(end, start, -1)
+        piece = state.board[pos]
+        if piece > 0:
+            positions = self.white_positions[pos]
+            opponent_sign = -1
         else:
-            if pos > 11:
-                start = pos - 7 if pos > 18 else 11
-                end = pos - 1
-                positions = range(end, start, -1)
-            else:
-                start = pos - 7 if pos > 6 else -1
-                end = pos - 1
-                first = range(end, start, -1)
-                if pos < 7:
-                    second = range(23, 18 + pos, -1)
-                    positions = chain(first, second)
-                else:
-                    positions = first
-
-        empty = True
-        for check_pos in positions:
-            empty = False
-            # If the opponent does not occupy the position, the piece is not locked
-            if (state.board[check_pos] * opponent_sign) <= 0:
-                return False
-            
-        if empty:
+            positions = self.black_positions[pos]
+            opponent_sign = 1
+        
+        if not positions:
             return False
+        
+        return all((state.board[p] * opponent_sign) > 0 for p in positions)
 
-        return True  # All positions are occupied by the opponent, so the piece is locked
-
+    @profile
     def _is_blocking_opponent(self, state: State):
         """
         Returns True if all opponent pieces are locked.
@@ -99,6 +112,7 @@ class LongNardy:
         # Return True if all opponent pieces are locked, otherwise False
         return sim_locked == 15
 
+    @profile
     def apply_dice(self, state: State) -> list[State]:
         # print("Applying dice for ", len(state.dice_remaining), " dice")
         results = []

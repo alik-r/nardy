@@ -1,6 +1,8 @@
 import numpy as np
 import random
 
+random.seed(0)
+
 class State:
     def __init__(self):
         """
