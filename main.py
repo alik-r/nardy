@@ -13,8 +13,8 @@ def play():
         if moves:
             game.step(moves[0])
         else:
-            print("Error. No valid moves available.")
-            raise Exception("No valid moves available.")
+            game.state.roll_dice()
+            game.state.change_turn()
             
 
     # game.state.pretty_print()
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     white_wins = 0
     black_wins = 0
     start_time = perf_counter()
-    for _ in range(100):
+    for _ in range(1):
         if play():
             white_wins += 1
         else:
