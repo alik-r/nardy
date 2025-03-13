@@ -93,7 +93,7 @@ class State:
         state_tensor = np.empty(100, dtype=np.float32)
 
         # Set borne-off pieces and move order.
-        state_tensor[0:2] = [self.white_off, self.black_off]
+        state_tensor[0:2] = [self.white_off/15, self.black_off/15]
         state_tensor[2:4] = [1.0 if self.is_white else 0.0,
                              0.0 if self.is_white else 1.0]
         
