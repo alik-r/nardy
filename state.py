@@ -155,3 +155,13 @@ class State:
             self.is_white == other.is_white and
             self.head_moved == other.head_moved
         )
+    
+    def to_dict(self):
+        return {
+            "board": self.board.tolist(),
+            "white_off": self.white_off,
+            "black_off": self.black_off,
+            "dice_remaining": self.dice_remaining,
+            "is_white": self.is_white,
+            "head_moved": self.head_moved
+        }
