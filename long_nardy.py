@@ -199,7 +199,7 @@ class LongNardy:
                         stack.append(new_state)
                     valid_move_found = True
                     # print(f"Moving piece at {pos} to {new_pos}")
-                    new_state.pretty_print()
+                    # new_state.pretty_print()
 
                 if not valid_move_found:
                     # print("No valid moves found for dice:", dice_value)
