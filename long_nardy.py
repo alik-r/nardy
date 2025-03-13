@@ -126,8 +126,8 @@ class LongNardy:
                 continue
             seen_configs.add(current_key)
 
-            print("Trying this state:")
-            current_state.pretty_print()
+            # print("Trying this state:")
+            # current_state.pretty_print()
 
             home_pieces = current_state.board[home_slice]
             if state.is_white:
@@ -144,7 +144,7 @@ class LongNardy:
             dice_remaining = current_state.dice_remaining
             # Check if all dice are the same
             if len(dice_remaining) > 0 and all(d == dice_remaining[0] for d in dice_remaining):
-                print("dice is same:", dice_remaining)
+                # print("dice is same:", dice_remaining)
                 dice_value = dice_remaining[0]
                 num_dice = len(dice_remaining)
                 new_remaining = [dice_value] * (num_dice - 1) if num_dice > 1 else []
@@ -153,10 +153,10 @@ class LongNardy:
 
                 for pos in piece_positions:
                     if self._is_locked(current_state, pos):
-                        print(f"Piece at {pos} is locked")
+                        # print(f"Piece at {pos} is locked")
                         continue
                     if pos == head_pos and current_state.head_moved:
-                        print(f"Head piece at {pos} already moved")
+                        # print(f"Head piece at {pos} already moved")
                         continue
 
                     new_pos = pos - dice_value
@@ -164,13 +164,13 @@ class LongNardy:
                         new_pos += 24
 
                     if current_state.board[new_pos] * opp_sign > 0:
-                        print(f"Destination at {new_pos} is blocked for piece at {pos}")
+                        # print(f"Destination at {new_pos} is blocked for piece at {pos}")
                         continue
 
                     # Bearing off logic
                     if (new_pos < 0 or (new_pos < 12 and pos >= 12 and not current_state.is_white)):
                         if can_bear_off:
-                            print(f"Bearing off piece at {pos} to {new_pos}")
+                            # print(f"Bearing off piece at {pos} to {new_pos}")
                             new_state = current_state.copy()
                             new_state.board[pos] += opp_sign
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
@@ -180,11 +180,11 @@ class LongNardy:
                             else:
                                 stack.append(new_state)
                             valid_move_found = True
-                        print(f"Bearing off piece at {pos} is not allowed")
+                        # print(f"Bearing off piece at {pos} is not allowed")
                         continue
 
                     if self._is_blocking_opponent(current_state):
-                        print(f"Piece at {pos} to {new_pos} is blocking opponent")
+                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
                         continue
 
                     new_state = current_state.copy()
@@ -198,11 +198,11 @@ class LongNardy:
                     else:
                         stack.append(new_state)
                     valid_move_found = True
-                    print(f"Moving piece at {pos} to {new_pos}")
+                    # print(f"Moving piece at {pos} to {new_pos}")
                     new_state.pretty_print()
 
                 if not valid_move_found:
-                    print("No valid moves found for dice:", dice_value)
+                    # print("No valid moves found for dice:", dice_value)
                     new_state = current_state.copy()
                     new_state.dice_remaining = new_remaining
                     if not new_remaining:
@@ -213,13 +213,13 @@ class LongNardy:
 
             # Original processing for non-identical dice
             for i in reversed(range(len(current_state.dice_remaining))):
-                print("Distinct dice:", current_state.dice_remaining)
+                # print("Distinct dice:", current_state.dice_remaining)
                 dice = current_state.dice_remaining[i]
                 remaining_dice = current_state.dice_remaining[:i] + current_state.dice_remaining[i+1:]
                 piece_positions = np.where((current_state.board * opp_sign) < 0)[0]
 
                 if piece_positions.size == 0:
-                    print("No pieces to move")
+                    # print("No pieces to move")
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
                     if not remaining_dice:
@@ -232,10 +232,10 @@ class LongNardy:
 
                 for pos in piece_positions:
                     if self._is_locked(current_state, pos):
-                        print(f"Piece at {pos} is locked")
+                        # print(f"Piece at {pos} is locked")
                         continue
                     if pos == head_pos and current_state.head_moved:
-                        print(f"Head piece at {pos} already moved")
+                        # print(f"Head piece at {pos} already moved")
                         continue
 
                     new_pos = pos - dice
@@ -243,12 +243,12 @@ class LongNardy:
                         new_pos += 24
 
                     if current_state.board[new_pos] * opp_sign > 0:
-                        print(f"Destination at {new_pos} is blocked for piece at {pos}")
+                        # print(f"Destination at {new_pos} is blocked for piece at {pos}")
                         continue
 
                     if (new_pos < 0 or (new_pos < 12 and pos >= 12 and not current_state.is_white)):
                         if can_bear_off:
-                            print(f"Bearing off piece at {pos}")
+                            # print(f"Bearing off piece at {pos}")
                             new_state = current_state.copy()
                             new_state.board[pos] += opp_sign
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
@@ -258,11 +258,11 @@ class LongNardy:
                             else:
                                 stack.append(new_state)
                             valid_move_found = True
-                        print(f"Bearing off piece at {pos} is not allowed")
+                        # print(f"Bearing off piece at {pos} is not allowed")
                         continue
 
                     if self._is_blocking_opponent(current_state):
-                        print(f"Piece at {pos} to {new_pos} is blocking opponent")
+                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
                         continue
 
                     new_state = current_state.copy()
@@ -272,17 +272,17 @@ class LongNardy:
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not remaining_dice:
-                        print("Reached end of dice")
+                        # print("Reached end of dice")
                         results.append(new_state)
                     else:
-                        print("Dice remaining:", remaining_dice)    
+                        # print("Dice remaining:", remaining_dice)    
                         stack.append(new_state)
                     valid_move_found = True
-                    print(f"Moving piece at {pos} to {new_pos}")
-                    new_state.pretty_print()
+                    # print(f"Moving piece at {pos} to {new_pos}")
+                    # new_state.pretty_print()
 
                 if not valid_move_found:
-                    print("No valid moves found for dice:", dice)
+                    # print("No valid moves found for dice:", dice)
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
                     if not remaining_dice:
