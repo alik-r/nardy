@@ -138,6 +138,5 @@ for episode in range(num_episodes):
     # Periodic saving and logging
     if episode % save_interval == 0:
         torch.save(agent.state_dict(), f"td_gammon_selfplay_{episode}.pth")
-    if episode % 1 == 0:
         print(f"Episode {episode} | Avg TD Error: {td_error.item():.4f}")
 
