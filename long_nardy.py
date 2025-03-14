@@ -138,6 +138,7 @@ class LongNardy:
             can_bear_off = (pieces_in_home == 15)
 
             if not current_state.dice_remaining:
+                current_state.change_turn()
                 results.append(current_state)
                 continue
 
@@ -176,6 +177,7 @@ class LongNardy:
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
                             new_state.dice_remaining = new_remaining
                             if not new_remaining:
+                                new_state.change_turn()
                                 results.append(new_state)
                             else:
                                 stack.append(new_state)
@@ -194,6 +196,7 @@ class LongNardy:
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not new_remaining:
+                        new_state.change_turn()
                         results.append(new_state)
                     else:
                         stack.append(new_state)
@@ -206,6 +209,7 @@ class LongNardy:
                     new_state = current_state.copy()
                     new_state.dice_remaining = new_remaining
                     if not new_remaining:
+                        new_state.change_turn()
                         results.append(new_state)
                     else:
                         stack.append(new_state)
@@ -223,6 +227,7 @@ class LongNardy:
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
                     if not remaining_dice:
+                        new_state.change_turn()
                         results.append(new_state)
                     else:
                         stack.append(new_state)
@@ -254,6 +259,7 @@ class LongNardy:
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
                             new_state.dice_remaining = remaining_dice
                             if not remaining_dice:
+                                new_state.change_turn()
                                 results.append(new_state)
                             else:
                                 stack.append(new_state)
@@ -273,6 +279,7 @@ class LongNardy:
                         new_state.head_moved = True
                     if not remaining_dice:
                         # print("Reached end of dice")
+                        new_state.change_turn()
                         results.append(new_state)
                     else:
                         # print("Dice remaining:", remaining_dice)    
@@ -286,9 +293,15 @@ class LongNardy:
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
                     if not remaining_dice:
+                        new_state.change_turn()
                         results.append(new_state)
                     else:
                         stack.append(new_state)
+        if not results:
+            new_state = state.copy()
+            new_state.dice_remaining = []
+            new_state.change_turn()
+            results.append(new_state)
 
         return results
         
@@ -301,7 +314,6 @@ class LongNardy:
         """
         self.state = state
         self.state.roll_dice()
-        self.state.change_turn()
 
     def is_finished(self):
         """
