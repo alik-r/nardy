@@ -94,13 +94,19 @@ agent = Agent(lr=0.001, epsilon=0.05)
 
 
 num_episodes = 1000000
-save_interval = 100
+save_interval = 5000
 total_start_time = time.time()
 
 for episode in range(num_episodes):
     game = LongNardy()
     agent.reset_eligibility_traces()
     done = False
+
+    if episode % save_interval == 0:
+        td_errors = []
+    else:
+        td_errors = None
+
     while not done:
         current_value = agent.get_value(game.state, grad=True)
         
@@ -128,8 +134,9 @@ for episode in range(num_episodes):
         # Calculate TD error
         td_error = reward + next_value - current_value.detach()
 
-        print(f"Current Value: {current_value.item():.4f} | Next Value: {next_value.item():.4f} | TD Error: {td_error.item():.4f} | Reward: {reward}")
-        
+        if td_errors is not None:
+            td_errors.append(td_error.item())
+
         # Update network
         agent.net.zero_grad()
         current_value.backward()
@@ -141,7 +148,18 @@ for episode in range(num_episodes):
 
     # Periodic saving and logging
     if episode % save_interval == 0:
+        # Compute statistics for TD errors in this episode
+        mean_td_error = sum(td_errors) / len(td_errors) if td_errors else 0
+        max_td_error = max(td_errors) if td_errors else 0
+        min_td_error = min(td_errors) if td_errors else 0
+
         torch.save(agent.state_dict(), f"saves/td_gammon_selfplay_{episode}.pth")
         total_elapsed_time = time.time() - total_start_time
-        print(f"Episode {episode} | Avg TD Error: {td_error.item():.4f} | Time: {total_elapsed_time:.2f}s")
+        print(
+            f"Episode {episode} | "
+            f"Mean TD Error: {mean_td_error:.4f} | "
+            f"Max TD Error: {max_td_error:.4f} | "
+            f"Min TD Error: {min_td_error:.4f} | "
+            f"Time: {total_elapsed_time:.2f}s"
+        )
 
