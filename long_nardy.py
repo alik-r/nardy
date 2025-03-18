@@ -1,6 +1,8 @@
 import numpy as np
 from state import State
 from concurrent.futures import ProcessPoolExecutor
+from numba import njit
+from typing import List, Tuple
 
 class LongNardy:
     """
@@ -26,128 +28,129 @@ class LongNardy:
 
     def __init__(self):
         self.state = State()
-        self._precalculated_white = self._precalculate_white()
-        self._precalculated_black = self._precalculate_black()
+
+        # precalculated indices where a white piece can move from each position on the board
+        self._precalculated_white = np.array([
+            [-1, -1, -1, -1, -1, -1],
+            [0, -1, -1, -1, -1, -1],
+            [1, 0, -1, -1, -1, -1],
+            [2, 1, 0, -1, -1, -1],
+            [3, 2, 1, 0, -1, -1],
+            [4, 3, 2, 1, 0, -1],
+            [5, 4, 3, 2, 1, 0],
+            [6, 5, 4, 3, 2, 1],
+            [7, 6, 5, 4, 3, 2],
+            [8, 7, 6, 5, 4, 3],
+            [9, 8, 7, 6, 5, 4],
+            [10, 9, 8, 7, 6, 5],
+            [11, 10, 9, 8, 7, 6],
+            [12, 11, 10, 9, 8, 7],
+            [13, 12, 11, 10, 9, 8],
+            [14, 13, 12, 11, 10, 9],
+            [15, 14, 13, 12, 11, 10],
+            [16, 15, 14, 13, 12, 11],
+            [17, 16, 15, 14, 13, 12],
+            [18, 17, 16, 15, 14, 13],
+            [19, 18, 17, 16, 15, 14],
+            [20, 19, 18, 17, 16, 15],
+            [21, 20, 19, 18, 17, 16],
+            [22, 21, 20, 19, 18, 17]
+        ], dtype=np.int64)
+
+        self._lengths_white = np.array([
+            0, 1, 2, 3, 4, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6
+        ], dtype=np.int64)
+
+        # Precalculated black positions as a NumPy array (padded with -1)
+        self._precalculated_black = np.array([
+            [23, 22, 21, 20, 19, -1],
+            [0, 23, 22, 21, 20, -1],
+            [1, 0, 23, 22, 21, -1],
+            [2, 1, 0, 23, 22, -1],
+            [3, 2, 1, 0, 23, -1],
+            [4, 3, 2, 1, 0, -1],
+            [5, 4, 3, 2, 1, 0],
+            [6, 5, 4, 3, 2, 1],
+            [7, 6, 5, 4, 3, 2],
+            [8, 7, 6, 5, 4, 3],
+            [9, 8, 7, 6, 5, 4],
+            [10, 9, 8, 7, 6, 5],
+            [-1, -1, -1, -1, -1, -1],
+            [12, -1, -1, -1, -1, -1],
+            [13, 12, -1, -1, -1, -1],
+            [14, 13, 12, -1, -1, -1],
+            [15, 14, 13, 12, -1, -1],
+            [16, 15, 14, 13, 12, -1],
+            [17, 16, 15, 14, 13, 12],
+            [18, 17, 16, 15, 14, 13],
+            [19, 18, 17, 16, 15, 14],
+            [20, 19, 18, 17, 16, 15],
+            [21, 20, 19, 18, 17, 16],
+            [22, 21, 20, 19, 18, 17]
+        ], dtype=np.int64)
+
+        self._lengths_black = np.array([
+            5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 
+            0, 1, 2, 3, 4, 5, 6, 6, 6, 6, 6, 6
+        ], dtype=np.int64)
 
         # Roll dice to begin the first turn.
         self.state.roll_dice()
 
-    def _precalculate_white(self) -> np.ndarray:
-        positions = []
-        for pos in range(24):
-            start = pos - 7 if pos > 5 else -1
-            end = pos - 1
-            pos_range = range(end, start, -1)
-            valid = [p for p in pos_range if 0 <= p < 24]
-            positions.append(tuple(valid))
-        return positions
-    
-    def _precalculate_black(self) -> np.ndarray:
-        positions = []
-        for pos in range(24):
-            if pos > 11:
-                start = pos - 7 if pos > 18 else 11
-                end = pos - 1
-                pos_range = range(end, start, -1)
-            else:
-                if pos > 6:
-                    start = pos - 7
-                    end = pos - 1
-                    pos_range = range(end, start, -1)
-                else:
-                    start = pos - 7 if pos > 6 else -1
-                    end = pos - 1
-                    first = range(end, start, -1)
-                    if pos < 7:
-                        second = range(23, 18 + pos, -1)
-                        pos_range = list(first) + list(second)
-                    else:
-                        pos_range = first
-            valid = [p for p in pos_range if 0 <= p < 24]
-            positions.append(tuple(valid))
-        return positions
-
-    @profile
-    def are_pieces_after_pos(self, state: State, pos: int) -> bool:
-        sign = -1 if state.is_white else 1
-
-        if state.is_white:
-            positions = self._precalculated_black[pos]
-        else:
-            positions = self._precalculated_white[pos]
-
-        for p in positions:
-            if state.board[p] * sign > 0:
-                return True
-        return False
-
-    @profile
-    def _is_illegal(self, state: State) -> bool:
-        sign = 1 if state.is_white else -1
-        board = state.board
-
-        consecutive_count = 0
-        for idx in range(len(board)):
-            num = board[idx]
-            if num * sign > 0:
-                consecutive_count += 1
-                if consecutive_count > 5:
-                    if not self.are_pieces_after_pos(state, idx):
-                        return True
-                    consecutive_count = 0  # Reset after checking
-            else:
-                consecutive_count = 0  # Reset if the sequence is broken
-        return False
-
-    @profile
+    # @profile
     def apply_dice(self, state: State) -> list[State]:
         results = []
+
+        # states that are processed already
         seen_configs = set()
 
-        home_slice = slice(0, 6) if state.is_white else slice(18, 24)
+        home_slice = slice(0, 6) if state.is_white else slice(12, 18)
         off_attr = 'white_off' if state.is_white else 'black_off'
-        head_pos = 11 if state.is_white else 23
+        head_pos = 23 if state.is_white else 11
         opp_sign = -1 if state.is_white else 1
+        precalc = self._precalculated_white if state.is_white else self._precalculated_black
+        lengths = self._lengths_white if state.is_white else self._lengths_black
 
         stack = [state.copy()]
         
         while stack:
             current_state = stack.pop()
-            current_key = board_key(current_state)
+            current_key = current_state.board.tobytes()
             
+            # skip processed states
             if current_key in seen_configs:
                 continue
             seen_configs.add(current_key)
-
-            # print("Trying this state:")
-            # current_state.pretty_print()
-
-            home_pieces = current_state.board[home_slice]
-            if state.is_white:
-                pieces_in_home = home_pieces[home_pieces > 0].sum()
-            else:
-                pieces_in_home = -home_pieces[home_pieces < 0].sum()
-            pieces_in_home += getattr(current_state, off_attr)
-            can_bear_off = (pieces_in_home == 15)
-
+            
+            # if there is no dice left, terminate the turn
             if not current_state.dice_remaining:
                 current_state.change_turn()
                 results.append(current_state)
                 continue
 
+            # Check if the player can bear off
+            if (current_state.white_off > 0 and current_state.is_white) or (current_state.black_off > 0 and not current_state.is_white):
+                can_bear_off = True
+            else:
+                home_pieces = current_state.board[home_slice]
+                if state.is_white:
+                    can_bear_off = home_pieces[home_pieces > 0].sum() == 15
+                else:
+                    can_bear_off = -home_pieces[home_pieces < 0].sum() == 15
+
             dice_remaining = current_state.dice_remaining
-            # Check if all dice are the same
-            if len(dice_remaining) > 1 and dice_remaining[0] == dice_remaining[1]:
-                # print("dice is same:", dice_remaining)
-                dice_value = dice_remaining[0]
-                num_dice = len(dice_remaining)
-                new_remaining = [dice_value] * (num_dice - 1) if num_dice > 1 else []
+
+            num_dice = len(dice_remaining)
+
+            # approach for the case when all dice are the same
+            if num_dice > 1 and dice_remaining[0] == dice_remaining[1]:
+                new_remaining = dice_remaining.copy()
+                dice_value = new_remaining.pop(0)
                 piece_positions = np.where((current_state.board * opp_sign) < 0)[0]
                 valid_move_found = False
 
                 for pos in piece_positions:
                     if pos == head_pos and current_state.head_moved:
-                        # print(f"Head piece at {pos} already moved")
                         continue
 
                     new_pos = pos - dice_value
@@ -155,13 +158,11 @@ class LongNardy:
                         new_pos += 24
 
                     if current_state.board[new_pos] * opp_sign > 0:
-                        # print(f"Destination at {new_pos} is blocked for piece at {pos}")
                         continue
 
                     # Bearing off logic
                     if (new_pos < 0 or (new_pos < 12 and pos >= 12 and not current_state.is_white)):
                         if can_bear_off:
-                            # print(f"Bearing off piece at {pos} to {new_pos}")
                             new_state = current_state.copy()
                             new_state.board[pos] += opp_sign
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
@@ -172,7 +173,6 @@ class LongNardy:
                             else:
                                 stack.append(new_state)
                             valid_move_found = True
-                        # print(f"Bearing off piece at {pos} is not allowed")
                         continue
 
                     new_state = current_state.copy()
@@ -180,8 +180,7 @@ class LongNardy:
                     new_state.board[new_pos] -= opp_sign
                     new_state.dice_remaining = new_remaining
 
-                    if self._is_illegal(new_state):
-                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
+                    if _is_illegal(new_state.is_white, new_state.board, precalc, lengths):
                         continue
 
                     if pos == head_pos:
@@ -192,11 +191,8 @@ class LongNardy:
                     else:
                         stack.append(new_state)
                     valid_move_found = True
-                    # print(f"Moving piece at {pos} to {new_pos}")
-                    # new_state.pretty_print()
 
                 if not valid_move_found:
-                    # print("No valid moves found for dice:", dice_value)
                     new_state = current_state.copy()
                     new_state.dice_remaining = new_remaining
                     if not new_remaining:
@@ -207,28 +203,15 @@ class LongNardy:
                 continue  # Skip the original loop after processing grouped dice
 
             # Original processing for non-identical dice
-            for i in reversed(range(len(current_state.dice_remaining))):
-                # print("Distinct dice:", current_state.dice_remaining)
+            piece_positions = np.where((current_state.board * opp_sign) < 0)[0]
+            for i in range(len(current_state.dice_remaining)):
                 dice = current_state.dice_remaining[i]
                 remaining_dice = current_state.dice_remaining[:i] + current_state.dice_remaining[i+1:]
-                piece_positions = np.where((current_state.board * opp_sign) < 0)[0]
-
-                if piece_positions.size == 0:
-                    # print("No pieces to move")
-                    new_state = current_state.copy()
-                    new_state.dice_remaining = remaining_dice
-                    if not remaining_dice:
-                        new_state.change_turn()
-                        results.append(new_state)
-                    else:
-                        stack.append(new_state)
-                    continue
 
                 valid_move_found = False
 
                 for pos in piece_positions:
                     if pos == head_pos and current_state.head_moved:
-                        # print(f"Head piece at {pos} already moved")
                         continue
 
                     new_pos = pos - dice
@@ -236,12 +219,10 @@ class LongNardy:
                         new_pos += 24
 
                     if current_state.board[new_pos] * opp_sign > 0:
-                        # print(f"Destination at {new_pos} is blocked for piece at {pos}")
                         continue
 
                     if (new_pos < 0 or (new_pos < 12 and pos >= 12 and not current_state.is_white)):
                         if can_bear_off:
-                            # print(f"Bearing off piece at {pos}")
                             new_state = current_state.copy()
                             new_state.board[pos] += opp_sign
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
@@ -252,7 +233,6 @@ class LongNardy:
                             else:
                                 stack.append(new_state)
                             valid_move_found = True
-                        # print(f"Bearing off piece at {pos} is not allowed")
                         continue
 
                     new_state = current_state.copy()
@@ -260,25 +240,19 @@ class LongNardy:
                     new_state.board[new_pos] -= opp_sign
                     new_state.dice_remaining = remaining_dice
 
-                    if self._is_illegal(new_state):
-                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
+                    if _is_illegal(new_state.is_white, new_state.board, precalc, lengths):
                         continue
 
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not remaining_dice:
-                        # print("Reached end of dice")
                         new_state.change_turn()
                         results.append(new_state)
                     else:
-                        # print("Dice remaining:", remaining_dice)    
                         stack.append(new_state)
                     valid_move_found = True
-                    # print(f"Moving piece at {pos} to {new_pos}")
-                    # new_state.pretty_print()
 
                 if not valid_move_found:
-                    # print("No valid moves found for dice:", dice)
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
                     if not remaining_dice:
@@ -309,7 +283,31 @@ class LongNardy:
         The game ends when one player has borne off all 15 pieces.
         """
         return self.state.white_off == 15 or self.state.black_off == 15
-    
-def board_key(state: State) -> tuple:
-    # Convert the board (assumed to be a NumPy array) to a tuple
-    return tuple(state.board.tolist())
+
+@njit
+def are_pieces_after_pos(is_white: bool, board: np.array, pos: int,
+                           precalc, lengths) -> bool:
+    sign = -1 if is_white else 1
+    valid_length = lengths[pos]
+    positions = precalc[pos]
+    for i in range(valid_length):
+        p = positions[i]
+        if board[p] * sign > 0:
+            return True
+    return False
+
+
+@njit
+def _is_illegal(is_white: bool, board: np.array, precalc, lengths) -> bool:
+    sign = 1 if is_white else -1
+
+    consecutive_count = 0
+
+    for i in range(0, 24):
+        if board[i] * sign > 0:
+            consecutive_count += 1
+        else:
+            consecutive_count = 0
+        if consecutive_count > 5 and not are_pieces_after_pos(is_white, board, i, precalc, lengths):
+            return True
+    return False

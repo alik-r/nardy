@@ -50,7 +50,7 @@ class State:
         Creates the copy of the state
         """
         # Optimized deep copy of the state
-        new_state = State()
+        new_state = State.__new__(State)
 
         # Copy the numpy board (efficient copy)
         new_state.board = self.board.copy()
