@@ -29,23 +29,23 @@ if __name__ == "__main__":
     random.seed(0)
     white_wins = 0
     black_wins = 0
-    profiler = cProfile.Profile()
-    profiler.enable()
-    start_time = perf_counter()
+    # profiler = cProfile.Profile()
+    # profiler.enable()
+    # start_time = perf_counter()
     for _ in range(1000):
         if play():
             white_wins += 1
         else:
             black_wins += 1
-    profiler.disable()
+    # profiler.disable()
     
-    end_time = perf_counter()
-    print("Time taken:", end_time - start_time)
-    print("White wins:", white_wins)
-    print("Black wins:", black_wins)
+    # end_time = perf_counter()
+    # print("Time taken:", end_time - start_time)
+    # print("White wins:", white_wins)
+    # print("Black wins:", black_wins)
 
 
-    stream = io.StringIO()
-    stats = pstats.Stats(profiler, stream=stream)
-    stats.strip_dirs().sort_stats("cumulative").print_stats(10)  # Show top 10 slowest functions
-    print(stream.getvalue())
+    # stream = io.StringIO()
+    # stats = pstats.Stats(profiler, stream=stream)
+    # stats.strip_dirs().sort_stats("cumulative").print_stats(10)  # Show top 10 slowest functions
+    # print(stream.getvalue())
