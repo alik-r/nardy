@@ -26,13 +26,13 @@ class LongNardy:
 
     def __init__(self):
         self.state = State()
-        self.white_positions = self._precompute_white_positions()
-        self.black_positions = self._precompute_black_positions()
+        self._precalculated_white = self._precalculate_white()
+        self._precalculated_black = self._precalculate_black()
 
         # Roll dice to begin the first turn.
         self.state.roll_dice()
 
-    def _precompute_white_positions(self):
+    def _precalculate_white(self) -> np.ndarray:
         positions = []
         for pos in range(24):
             start = pos - 7 if pos > 5 else -1
@@ -42,7 +42,7 @@ class LongNardy:
             positions.append(tuple(valid))
         return positions
     
-    def _precompute_black_positions(self):
+    def _precalculate_black(self) -> np.ndarray:
         positions = []
         for pos in range(24):
             if pos > 11:
@@ -66,45 +66,37 @@ class LongNardy:
             valid = [p for p in pos_range if 0 <= p < 24]
             positions.append(tuple(valid))
         return positions
-        
-    # @profile
-    def _is_locked(self, state: State, pos: int) -> bool:
-        """
-        Check if the piece at board index pos is locked.
-        A piece is locked if, in the six absolute points immediately ahead (in anticlockwise order for white,
-        clockwise for black), every such point that exists on the board is occupied by the opponent.
-        """
-        piece = state.board[pos]
-        if piece > 0:
-            positions = self.white_positions[pos]
-            opponent_sign = -1
-        else:
-            positions = self.black_positions[pos]
-            opponent_sign = 1
-        
-        if not positions:
-            return False
-        
-        return all((state.board[p] * opponent_sign) > 0 for p in positions)
 
-    # @profile
-    def _is_blocking_opponent(self, state: State):
-        """
-        Returns True if all opponent pieces are locked.
-        """
+    def are_pieces_after_pos(self, state: State, pos: int) -> bool:
+        sign = -1 if state.is_white else 1
+
         if state.is_white:
-            if state.black_off > 0:
-                return False
-            opponent_positions = np.flatnonzero(state.board < 0)
+            positions = self._precalculated_black[pos]
         else:
-            if state.white_off > 0:
-                return False
-            opponent_positions = np.flatnonzero(state.board > 0)
-        
-        # Convert to list for faster iteration in Python
-        opponent_positions = opponent_positions.tolist()
-        
-        return all(self._is_locked(state, pos) for pos in opponent_positions)
+            positions = self._precalculated_white[pos]
+
+        print(f"Checking positions after {pos}: {positions}")
+        for p in positions:
+            print(f"Checking piece at {p} with value {state.board[p]}")
+            if state.board[p] * sign > 0:
+                print(f"Found piece at {p}")
+                return True
+        print(f"No pieces after {pos}") 
+        return False
+
+    def _is_illegal(self, state: State) -> bool:
+        sign = 1 if state.is_white else -1
+
+        consequitive_count = 0
+        for index, num in np.ndenumerate(state.board):
+            if num * sign > 0:
+                consequitive_count += 1
+            if consequitive_count > 5:
+                if not self.are_pieces_after_pos(state, index[0]):
+                    print(f"Locking rule violated at position {index[0]}")
+                    return True
+                consequitive_count = 0
+        return False
 
     # @profile
     def apply_dice(self, state: State) -> list[State]:
@@ -144,7 +136,7 @@ class LongNardy:
 
             dice_remaining = current_state.dice_remaining
             # Check if all dice are the same
-            if len(dice_remaining) > 0 and all(d == dice_remaining[0] for d in dice_remaining):
+            if len(dice_remaining) > 0 and dice_remaining[0] == dice_remaining[1]:
                 # print("dice is same:", dice_remaining)
                 dice_value = dice_remaining[0]
                 num_dice = len(dice_remaining)
@@ -153,9 +145,6 @@ class LongNardy:
                 valid_move_found = False
 
                 for pos in piece_positions:
-                    if self._is_locked(current_state, pos):
-                        # print(f"Piece at {pos} is locked")
-                        continue
                     if pos == head_pos and current_state.head_moved:
                         # print(f"Head piece at {pos} already moved")
                         continue
@@ -185,14 +174,15 @@ class LongNardy:
                         # print(f"Bearing off piece at {pos} is not allowed")
                         continue
 
-                    if self._is_blocking_opponent(current_state):
-                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
-                        continue
-
                     new_state = current_state.copy()
                     new_state.board[pos] += opp_sign
                     new_state.board[new_pos] -= opp_sign
                     new_state.dice_remaining = new_remaining
+
+                    if self._is_illegal(new_state):
+                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
+                        continue
+
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not new_remaining:
@@ -236,9 +226,6 @@ class LongNardy:
                 valid_move_found = False
 
                 for pos in piece_positions:
-                    if self._is_locked(current_state, pos):
-                        # print(f"Piece at {pos} is locked")
-                        continue
                     if pos == head_pos and current_state.head_moved:
                         # print(f"Head piece at {pos} already moved")
                         continue
@@ -267,14 +254,15 @@ class LongNardy:
                         # print(f"Bearing off piece at {pos} is not allowed")
                         continue
 
-                    if self._is_blocking_opponent(current_state):
-                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
-                        continue
-
                     new_state = current_state.copy()
                     new_state.board[pos] += opp_sign
                     new_state.board[new_pos] -= opp_sign
                     new_state.dice_remaining = remaining_dice
+
+                    if self._is_illegal(new_state):
+                        # print(f"Piece at {pos} to {new_pos} is blocking opponent")
+                        continue
+
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not remaining_dice:
