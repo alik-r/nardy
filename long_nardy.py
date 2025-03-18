@@ -67,6 +67,7 @@ class LongNardy:
             positions.append(tuple(valid))
         return positions
 
+    @profile
     def are_pieces_after_pos(self, state: State, pos: int) -> bool:
         sign = -1 if state.is_white else 1
 
@@ -75,30 +76,30 @@ class LongNardy:
         else:
             positions = self._precalculated_white[pos]
 
-        print(f"Checking positions after {pos}: {positions}")
         for p in positions:
-            print(f"Checking piece at {p} with value {state.board[p]}")
             if state.board[p] * sign > 0:
-                print(f"Found piece at {p}")
                 return True
-        print(f"No pieces after {pos}") 
         return False
 
+    @profile
     def _is_illegal(self, state: State) -> bool:
         sign = 1 if state.is_white else -1
+        board = state.board
 
-        consequitive_count = 0
-        for index, num in np.ndenumerate(state.board):
+        consecutive_count = 0
+        for idx in range(len(board)):
+            num = board[idx]
             if num * sign > 0:
-                consequitive_count += 1
-            if consequitive_count > 5:
-                if not self.are_pieces_after_pos(state, index[0]):
-                    print(f"Locking rule violated at position {index[0]}")
-                    return True
-                consequitive_count = 0
+                consecutive_count += 1
+                if consecutive_count > 5:
+                    if not self.are_pieces_after_pos(state, idx):
+                        return True
+                    consecutive_count = 0  # Reset after checking
+            else:
+                consecutive_count = 0  # Reset if the sequence is broken
         return False
 
-    # @profile
+    @profile
     def apply_dice(self, state: State) -> list[State]:
         results = []
         seen_configs = set()
@@ -136,7 +137,7 @@ class LongNardy:
 
             dice_remaining = current_state.dice_remaining
             # Check if all dice are the same
-            if len(dice_remaining) > 0 and dice_remaining[0] == dice_remaining[1]:
+            if len(dice_remaining) > 1 and dice_remaining[0] == dice_remaining[1]:
                 # print("dice is same:", dice_remaining)
                 dice_value = dice_remaining[0]
                 num_dice = len(dice_remaining)

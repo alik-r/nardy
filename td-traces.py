@@ -1,3 +1,9 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[ ]:
+
+
 import torch
 from torch import nn
 import numpy as np
@@ -6,8 +12,16 @@ from state import State
 from typing import Tuple, List
 import time
 
+
+# In[ ]:
+
+
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 print(f"Using {device} device")
+
+
+# In[ ]:
+
 
 class ANN(nn.Module):
     def __init__(self):
@@ -22,6 +36,10 @@ class ANN(nn.Module):
 
     def forward(self, x):
         return self.net(x)
+
+
+# In[ ]:
+
 
 class Agent(nn.Module):
     def __init__(self, lr=0.1, epsilon=0.1):
@@ -65,7 +83,15 @@ class Agent(nn.Module):
             
         return chosen_state, value
 
+
+# In[ ]:
+
+
 agent = Agent(lr=0.001, epsilon=0.05)
+
+
+# In[ ]:
+
 
 num_episodes = 1000000
 save_interval = 100
@@ -101,6 +127,8 @@ for episode in range(num_episodes):
 
         # Calculate TD error
         td_error = reward + next_value - current_value.detach()
+
+        print(f"Current Value: {current_value.item():.4f} | Next Value: {next_value.item():.4f} | TD Error: {td_error.item():.4f} | Reward: {reward}")
         
         # Update network
         agent.net.zero_grad()
@@ -116,3 +144,4 @@ for episode in range(num_episodes):
         torch.save(agent.state_dict(), f"td_gammon_selfplay_{episode}.pth")
         total_elapsed_time = time.time() - total_start_time
         print(f"Episode {episode} | Avg TD Error: {td_error.item():.4f} | Time: {total_elapsed_time:.2f}s")
+
