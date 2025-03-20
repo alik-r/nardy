@@ -98,7 +98,7 @@ class LongNardy:
         self.state.roll_dice()
 
     # @profile
-    def apply_dice(self, state: State) -> list[State]:
+    def apply_dice(self, state: State) -> List[State]:
         results = []
 
         # states that are processed already
