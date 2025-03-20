@@ -268,7 +268,7 @@ class LongNardy:
 
         return results
         
-    def get_states_after_dice(self) -> list[State]:
+    def get_states_after_dice(self) -> List[State]:
         return self.apply_dice(self.state)
 
     def step(self, state: State):
