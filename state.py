@@ -111,6 +111,40 @@ class State:
         state_tensor[4:] = field_tensor
         return state_tensor
     
+    def get_representation_for_current_player(self):
+        """
+        Returns a tensor representation of the game state for the current player.
+        """
+        # Initialize the tensor to hold the game state
+        state_tensor = np.zeros((self.board.shape[0], 4), dtype=np.float32)
+
+        # swap the sides of boards if it is black's turn (due to different move directions)
+        if not self.is_white:
+            swapped_board = np.concatenate([self.board[12:], self.board[:12]])
+            board = -swapped_board
+        else:
+            board = self.board
+
+        current_mask = board > 0
+        opponent_mask = board < 0
+        # for each position 1 if there is our piece, 0 otherwise
+        state_tensor[current_mask, 0] = 1
+        # for each position number of our pieces - 1
+        state_tensor[current_mask, 1] = np.maximum(board[current_mask], 1) - 1
+
+        # for each position 1 if there is opponent piece, 0 otherwise
+        state_tensor[opponent_mask, 2] = 1
+        # for each position number of opponent pieces - 1
+        state_tensor[opponent_mask, 3] = np.maximum(-board[opponent_mask], 1) - 1
+
+        off = np.zeros(2, dtype=np.float32)
+        off[0] = self.white_off / 15 if self.is_white else self.black_off / 15
+        off[1] = self.black_off / 15 if self.is_white else self.white_off / 15
+
+        result = np.concatenate((state_tensor.flatten(), off))
+        return result
+
+    
     def pretty_print(self):
         """
         Prints the Nardy board state in a visually appealing format.
