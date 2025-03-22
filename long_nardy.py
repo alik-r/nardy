@@ -113,7 +113,7 @@ class LongNardy:
 
         # double head move case:
         if state.board[head_pos] == 15 * -opp_sign:
-            if state.dice_remaining[0] in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]:
+            if state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]:
                 dice_value = state.dice_remaining[0]
                 
                 if dice_value == 6:
@@ -130,10 +130,11 @@ class LongNardy:
                 
                 
                 resulting_state = state.copy()
-                resulting_state.board[head_pos] -= 2
-                resulting_state.board[new_pos1] += 1
-                resulting_state.board[new_pos2] += 1
+                resulting_state.board[head_pos] -= 2 * -opp_sign 
+                resulting_state.board[new_pos1] += 1 * -opp_sign
+                resulting_state.board[new_pos2] += 1 * -opp_sign
                 resulting_state.dice_remaining = []
+                resulting_state.change_turn()
                 return [resulting_state]
 
         stack = [state.copy()]
