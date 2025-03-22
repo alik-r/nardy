@@ -111,10 +111,36 @@ class LongNardy:
         precalc = self._precalculated_white if state.is_white else self._precalculated_black
         lengths = self._lengths_white if state.is_white else self._lengths_black
 
+        # double head move case:
+        if state.board[head_pos] == 15 * -opp_sign:
+            if state.dice_remaining[0] in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]:
+                dice_value = state.dice_remaining[0]
+                
+                if dice_value == 6:
+                    new_pos1 = head_pos - dice_value
+                    new_pos2 = head_pos - dice_value 
+                
+                elif dice_value == 4:
+                    new_pos1 = head_pos - dice_value * 2
+                    new_pos2 = head_pos - dice_value * 2
+                
+                elif dice_value == 3:
+                    new_pos1 = head_pos - dice_value * 3
+                    new_pos2 = head_pos - dice_value 
+                
+                
+                resulting_state = state.copy()
+                resulting_state.board[head_pos] -= 2
+                resulting_state.board[new_pos1] += 1
+                resulting_state.board[new_pos2] += 1
+                resulting_state.dice_remaining = []
+                return [resulting_state]
+
         stack = [state.copy()]
         
         while stack:
             current_state = stack.pop()
+
             current_key = current_state.board.tobytes()
             
             # skip processed states
@@ -141,34 +167,6 @@ class LongNardy:
             dice_remaining = current_state.dice_remaining
 
             num_dice = len(dice_remaining)
-            
-            # double head move case:
-            if state.board[head_pos] == 15:
-                if state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]:
-                    dice_value = state.dice_remaining[0]
-                    
-                    if dice_value == 6:
-                        new_pos1 = head_pos - dice_value
-                        new_pos2 = head_pos - dice_value 
-                    
-                    elif dice_value == 4:
-                        new_pos1 = head_pos - dice_value * 2
-                        new_pos2 = head_pos - dice_value * 2
-                    
-                    elif dice_value == 3:
-                        new_pos1 = head_pos - dice_value * 3
-                        new_pos2 = head_pos - dice_value 
-                    
-                    
-                    
-                    state.board[head_pos] -= 2
-                    state.board[new_pos1] += 1
-                    state.board[new_pos2] += 1           
-                    
-                    dice_remaining = [] 
-                    current_state.dice_remaining = dice_remaining     
-                    num_dice = len(dice_remaining)   
-                    continue
 
             # approach for the case when all dice are the same
             if num_dice > 1 and dice_remaining[0] == dice_remaining[1]:
