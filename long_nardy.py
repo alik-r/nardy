@@ -103,11 +103,39 @@ class LongNardy:
 
         # states that are processed already
         seen_configs = set()
+        result_configs = set()
 
         home_slice = slice(0, 6) if state.is_white else slice(12, 18)
         off_attr = 'white_off' if state.is_white else 'black_off'
         head_pos = 23 if state.is_white else 11
         opp_sign = -1 if state.is_white else 1
+
+        if state.board[head_pos] * -opp_sign == 15 and state.dice_remaining in [[3,3,3,3], [4,4,4,4], [6,6,6,6]]:
+            dice_value = state.dice_remaining[0]
+                    
+            if dice_value == 6:
+                new_pos1 = head_pos - dice_value
+                new_pos2 = head_pos - dice_value 
+            
+            elif dice_value == 4:
+                if not state.is_white and state.board[3] > 0:
+                    new_pos1 = head_pos - dice_value
+                    new_pos2 = head_pos - dice_value
+                else:
+                    new_pos1 = head_pos - dice_value * 2
+                    new_pos2 = head_pos - dice_value * 2
+            
+            elif dice_value == 3:
+                new_pos1 = head_pos - dice_value * 3
+                new_pos2 = head_pos - dice_value 
+            
+            resulting_State = state.copy()
+            resulting_State.board[head_pos] -= 2 * -opp_sign
+            resulting_State.board[new_pos1] += 1 * -opp_sign
+            resulting_State.board[new_pos2] += 1 * -opp_sign
+            resulting_State.change_turn()
+            return [resulting_State]
+
         precalc = self._precalculated_white if state.is_white else self._precalculated_black
         lengths = self._lengths_white if state.is_white else self._lengths_black
 
@@ -125,12 +153,12 @@ class LongNardy:
             
             # if there is no dice left, terminate the turn
             if not current_state.dice_remaining:
-                current_state.change_turn()
-                results.append(current_state)
+                config = current_state.board.tobytes()
+                if config not in result_configs:
+                    current_state.change_turn()
+                    results.append(current_state)
+                    result_configs.add(config)
                 continue
-
-            # double head move case:
-            special_case = current_state.board[head_pos] == 15 * -opp_sign and current_state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]
 
             # Check if the player can bear off
             if (current_state.white_off > 0 and current_state.is_white) or (current_state.black_off > 0 and not current_state.is_white):
@@ -154,7 +182,7 @@ class LongNardy:
                 valid_move_found = False
 
                 for pos in piece_positions:
-                    if pos == head_pos and (current_state.head_moved and not special_case):
+                    if pos == head_pos and current_state.head_moved:
                         continue
 
                     new_pos = pos - dice_value
@@ -172,8 +200,13 @@ class LongNardy:
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
                             new_state.dice_remaining = new_remaining
                             if not new_remaining:
-                                new_state.change_turn()
-                                results.append(new_state)
+                                config = new_state.board.tobytes()
+                                if config not in result_configs:
+                                    new_state.change_turn()
+                                    results.append(new_state)
+                                    result_configs.add(config)
+                                else:
+                                    continue
                             else:
                                 stack.append(new_state)
                             valid_move_found = True
@@ -190,17 +223,25 @@ class LongNardy:
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not new_remaining:
-                        new_state.change_turn()
-                        results.append(new_state)
+                        config = new_state.board.tobytes()
+                        if config not in result_configs:
+                            new_state.change_turn()
+                            results.append(new_state)
+                            result_configs.add(config)
+                        else:
+                            continue
                     else:
                         stack.append(new_state)
                     valid_move_found = True
 
                 if not valid_move_found:
-                    new_state = current_state.copy()
-                    new_state.dice_remaining = []
-                    new_state.change_turn()
-                    results.append(new_state)
+                    config = current_state.board.tobytes()
+                    if config not in result_configs:
+                        new_state = current_state.copy()
+                        new_state.dice_remaining = []
+                        new_state.change_turn()
+                        results.append(new_state)
+                        result_configs.add(config)
                 continue  # Skip the original loop after processing grouped dice
 
             # Original processing for non-identical dice
@@ -229,8 +270,13 @@ class LongNardy:
                             setattr(new_state, off_attr, getattr(new_state, off_attr) + 1)
                             new_state.dice_remaining = remaining_dice
                             if not remaining_dice:
-                                new_state.change_turn()
-                                results.append(new_state)
+                                config = new_state.board.tobytes()
+                                if config not in result_configs:
+                                    new_state.change_turn()
+                                    results.append(new_state)
+                                    result_configs.add(config)
+                                else:
+                                    continue
                             else:
                                 stack.append(new_state)
                             valid_move_found = True
@@ -247,8 +293,13 @@ class LongNardy:
                     if pos == head_pos:
                         new_state.head_moved = True
                     if not remaining_dice:
-                        new_state.change_turn()
-                        results.append(new_state)
+                        config = new_state.board.tobytes()
+                        if config not in result_configs:
+                            new_state.change_turn()
+                            results.append(new_state)
+                            result_configs.add(config)
+                        else:
+                            continue
                     else:
                         stack.append(new_state)
                     valid_move_found = True
@@ -257,8 +308,13 @@ class LongNardy:
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
                     if not remaining_dice:
-                        new_state.change_turn()
-                        results.append(new_state)
+                        config = new_state.board.tobytes()
+                        if config not in result_configs:
+                            new_state.change_turn()
+                            results.append(new_state)
+                            result_configs.add(config)
+                        else:
+                            continue
                     else:
                         stack.append(new_state)
         if not results:

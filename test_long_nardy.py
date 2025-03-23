@@ -50,7 +50,7 @@ class TestLongNardy(unittest.TestCase):
         self.game.step(results[0])
         self.assertEqual(len(results), 1)
         resulting_board = np.array([  
-            0, 0, 0, 1, 0, 0, 0,-1, 0, 0, 0, -14, 0,
+            0, 0, 0, 1, 0, 0, 0,-2, 0, 0, 0, -13, 0,
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14
             ])
         self.assertTrue(all(self.game.state.board == resulting_board))
@@ -63,6 +63,25 @@ class TestLongNardy(unittest.TestCase):
         self.game.state.dice_remaining = [3, 5]
         results = self.game.get_states_after_dice()
         self.assertEqual(len(results), 2)
-    
+
+    def test_four_dice_from_head(self):
+        state = State()
+        state.dice_remaining = [4, 4, 4, 4]
+        self.game.state = state
+        results = self.game.get_states_after_dice()
+        self.assertEqual(len(results), 1)
+        self.assertTrue(all(results[0].board == np.array([  
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -15, 
+            0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 13
+        ])))
+
+    def test_three_dice_from_head(self):
+        state = State()
+        state.dice_remaining = [3, 3, 3, 3]
+        self.game.state = state
+        results = self.game.get_states_after_dice()
+        self.assertEqual(len(results), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
