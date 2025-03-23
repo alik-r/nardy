@@ -54,6 +54,15 @@ class TestLongNardy(unittest.TestCase):
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14
             ])
         self.assertTrue(all(self.game.state.board == resulting_board))
+
+    def test_move_from_head_with_single_dice(self):
+        state = State()
+        state.dice_remaining = [5, 5, 5, 5]
+        self.game.state = state
+        self.game.step(self.game.get_states_after_dice()[0])
+        self.game.state.dice_remaining = [3, 5]
+        results = self.game.get_states_after_dice()
+        self.assertEqual(len(results), 2)
     
 if __name__ == "__main__":
     unittest.main()
