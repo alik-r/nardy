@@ -110,32 +110,8 @@ class LongNardy:
         opp_sign = -1 if state.is_white else 1
         precalc = self._precalculated_white if state.is_white else self._precalculated_black
         lengths = self._lengths_white if state.is_white else self._lengths_black
-
         # double head move case:
-        if state.board[head_pos] == 15 * -opp_sign:
-            if state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]:
-                dice_value = state.dice_remaining[0]
-                
-                if dice_value == 6:
-                    new_pos1 = head_pos - dice_value
-                    new_pos2 = head_pos - dice_value 
-                
-                elif dice_value == 4:
-                    new_pos1 = head_pos - dice_value * 2
-                    new_pos2 = head_pos - dice_value * 2
-                
-                elif dice_value == 3:
-                    new_pos1 = head_pos - dice_value * 3
-                    new_pos2 = head_pos - dice_value 
-                
-                
-                resulting_state = state.copy()
-                resulting_state.board[head_pos] -= 2 * -opp_sign 
-                resulting_state.board[new_pos1] += 1 * -opp_sign
-                resulting_state.board[new_pos2] += 1 * -opp_sign
-                resulting_state.dice_remaining = []
-                resulting_state.change_turn()
-                return [resulting_state]
+        special_case = state.board[head_pos] == 15 * -opp_sign and state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]
 
         stack = [state.copy()]
         
@@ -177,7 +153,7 @@ class LongNardy:
                 valid_move_found = False
 
                 for pos in piece_positions:
-                    if pos == head_pos and current_state.head_moved:
+                    if pos == head_pos and (current_state.head_moved and not special_case):
                         continue
 
                     new_pos = pos - dice_value
