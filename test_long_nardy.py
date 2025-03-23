@@ -38,6 +38,22 @@ class TestLongNardy(unittest.TestCase):
         self.game.state.white_off = 0
         self.game.state.black_off = 15  # Simulate black bearing off all pieces
         self.assertTrue(self.game.is_finished())
+
+    def test_move_from_head_with_double_dice(self):
+        state = State()
+
+        state.dice_remaining = [5, 5, 5, 5]
+        self.game.state = state
+        self.game.step(self.game.get_states_after_dice()[0])
+        self.game.state.dice_remaining = [4, 4, 4, 4]
+        results = self.game.get_states_after_dice()
+        self.game.step(results[0])
+        self.assertEqual(len(results), 1)
+        resulting_board = np.array([  
+            0, 0, 0, 1, 0, 0, 0,-1, 0, 0, 0, -14, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14
+            ])
+        self.assertTrue(all(self.game.state.board == resulting_board))
     
 if __name__ == "__main__":
     unittest.main()
