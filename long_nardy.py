@@ -110,8 +110,6 @@ class LongNardy:
         opp_sign = -1 if state.is_white else 1
         precalc = self._precalculated_white if state.is_white else self._precalculated_black
         lengths = self._lengths_white if state.is_white else self._lengths_black
-        # double head move case:
-        special_case = state.board[head_pos] == 15 * -opp_sign and state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]
 
         stack = [state.copy()]
         
@@ -130,6 +128,9 @@ class LongNardy:
                 current_state.change_turn()
                 results.append(current_state)
                 continue
+
+            # double head move case:
+            special_case = current_state.board[head_pos] == 15 * -opp_sign and current_state.dice_remaining in [[6, 6, 6, 6], [4, 4, 4, 4], [3, 3, 3, 3]]
 
             # Check if the player can bear off
             if (current_state.white_off > 0 and current_state.is_white) or (current_state.black_off > 0 and not current_state.is_white):
@@ -197,12 +198,9 @@ class LongNardy:
 
                 if not valid_move_found:
                     new_state = current_state.copy()
-                    new_state.dice_remaining = new_remaining
-                    if not new_remaining:
-                        new_state.change_turn()
-                        results.append(new_state)
-                    else:
-                        stack.append(new_state)
+                    new_state.dice_remaining = []
+                    new_state.change_turn()
+                    results.append(new_state)
                 continue  # Skip the original loop after processing grouped dice
 
             # Original processing for non-identical dice
