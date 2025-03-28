@@ -136,6 +136,23 @@ class LongNardy:
             resulting_State.change_turn()
             return [resulting_State]
 
+        if state.board[head_pos] == -15:
+            if len(state.dice_remaining) == 2:
+                val1 = state.dice_remaining[0]
+                val2 = state.dice_remaining[1]
+                check_pos = val1+val2
+                
+                if state.board[head_pos - check_pos] > 0:
+                    new_pos1 = head_pos - val1
+                    new_pos2 = head_pos - val2
+
+                    state.board[new_pos1] = -1
+                    state.board[new_pos2] = -1
+                    state.board[head_pos] = -13
+                    
+                    return [state]
+                           
+        
         precalc = self._precalculated_white if state.is_white else self._precalculated_black
         lengths = self._lengths_white if state.is_white else self._lengths_black
 
