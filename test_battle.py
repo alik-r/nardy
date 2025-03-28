@@ -89,7 +89,7 @@ def test_battle():
     strong_wins = 0
     for i in range(1000):
         print(f"Game {i}, Weak wins: {weak_wins}, Strong wins: {strong_wins}")
-        side = True if i % 2 == 0 else False
+        side = True if i % 2 == 1 else False
         game = LongNardy()
         while not game.is_finished():
             if game.state.is_white == side:
