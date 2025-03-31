@@ -151,7 +151,7 @@ class State:
         Positive values represent White's pieces, and negative values represent Black's pieces.
         """
         print("\nNardy Board State:")
-        print(f"{"-" * 60}-|  |-{"-" * 66}")
+        print(f'{"-" * 60}-|  |-{"-" * 66}')
         
         # Upper half of the board (points 13 to 24)
         for i in range(12, 24):
@@ -160,8 +160,7 @@ class State:
             print(f"{i:2d} [{piece_str}]", end="  ")
             if i == 17:
                 print(f" |  |   ", end="")
-        
-        print(f"\n{"-" * 60}-|  |-{"-" * 66}")
+        print(f'{"-" * 60}-|  |-{"-" * 66}')
 
         # Lower half of the board (points 1 to 12)
         for i in range(11, -1, -1):
@@ -170,8 +169,7 @@ class State:
             print(f"{i:2d} [{piece_str}]", end="  ")
             if i == 6:
                 print(f" |  |  ", end="")
-
-        print(f"\n{"-" * 60}-|  |-{"-" * 66}")
+        print(f'{"-" * 60}-|  |-{"-" * 66}')
 
         print("White Turn: ", self.is_white)
         print("Dice: ", self.dice_remaining)
