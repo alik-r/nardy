@@ -196,10 +196,11 @@ def main():
     # For instance, within 2 days (172800 seconds) and 0.5 seconds per game,
     # the maximum number of matches is 345,600.
     # Here, we simulate a smaller number (e.g., 10000 matches) as a demo.
-    num_matches = 100
+    num_matches = 10
 
     # Using a ThreadPoolExecutor to run matches concurrently.
     max_workers = os.cpu_count()
+    print(f"Starting {num_matches} matches with {max_workers} threads.")
     start_time = time.time()
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = []
