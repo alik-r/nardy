@@ -12,7 +12,7 @@ from pathlib import Path
 import os
 import csv
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cpu")
 print(f"Using {device} device")
 
 class ANN(nn.Module):
@@ -191,12 +191,14 @@ def main():
             player_name = path.split(".")[0]
             player_path = current_directory / "v2" / path
             players.append(Player(player_name, player_path))
+
+    print(f"Loaded {len(players)} players.")
     
     # Determine how many matches to run.
     # For instance, within 2 days (172800 seconds) and 0.5 seconds per game,
     # the maximum number of matches is 345,600.
     # Here, we simulate a smaller number (e.g., 10000 matches) as a demo.
-    num_matches = 10
+    num_matches = 150000
 
     # Using a ThreadPoolExecutor to run matches concurrently.
     max_workers = os.cpu_count()
