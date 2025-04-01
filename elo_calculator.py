@@ -1,19 +1,17 @@
-import threading
 import random
-import concurrent.futures
 import time
-from long_nardy import LongNardy
+import csv
+from pathlib import Path
+from typing import List
+from multiprocessing import Manager, cpu_count
+import concurrent.futures
+import numpy as np
 import torch
 from torch import nn
-import numpy as np
+from long_nardy import LongNardy
 from state import State
-from typing import Tuple, List
-from pathlib import Path
-import os
-import csv
 
 device = torch.device("cpu")
-print(f"Using {device} device")
 
 class ANN(nn.Module):
     def __init__(self):
@@ -32,7 +30,7 @@ class ANN(nn.Module):
 
     def forward(self, x):
         return self.net(x)
-    
+
 class Agent(nn.Module):
     def __init__(self, lr=0.1, epsilon=0.1):
         super().__init__()
@@ -42,186 +40,169 @@ class Agent(nn.Module):
         self.eligibility_traces = {name: torch.zeros_like(param) 
                                   for name, param in self.net.named_parameters()}
         
-    def get_value(self, state: State, grad=False) -> torch.Tensor:
-        """Get V(s) with optional gradient tracking"""
-        with torch.set_grad_enabled(grad):
-            state_tensor = torch.tensor(state.get_representation_for_current_player(), 
-                                      dtype=torch.float32).to(device)
-            return self.net(state_tensor)
-        
-    def update_eligibility_traces(self):
-        """Update traces with current gradients (lambda=1, gamma=1)"""
+    def evaluate(self, state: State) -> float:
+        state_tensor = torch.tensor(state.get_representation_for_current_player(),
+                                  dtype=torch.float32).to(device)
         with torch.no_grad():
-            for name, param in self.net.named_parameters():
-                self.eligibility_traces[name] = param.grad + self.eligibility_traces[name]
-
-    def reset_eligibility_traces(self):
-        for name in self.eligibility_traces:
-            self.eligibility_traces[name].zero_()
-            
-    def epsilon_greedy(self, candidate_states: List[State]) -> State:
-        """Epsilon-greedy selection with perspective flip for opponent"""
-        if np.random.rand() < self.epsilon:
-            chosen_idx = np.random.randint(len(candidate_states))
-            chosen_state = candidate_states[chosen_idx]
-        else:
-            with torch.no_grad():
-                values = [self.get_value(state) for state in candidate_states]
-            
-            chosen_idx = np.argmax([v.item() for v in values])
-            chosen_state = candidate_states[chosen_idx]
-            
-        return chosen_state
-
+            return self.net(state_tensor).item()
+        
 class Player:
-    def __init__(self, name, path):
+    def __init__(self, name, model_path, manager):
         self.name = name
-        self.rating = 1500.0
-        self.uncertainty = 350.0  # initial uncertainty
-        self.lock = threading.Lock()  # for thread-safe updates
-        self.agent = Agent()
-        self.agent.load_state_dict(torch.load(path, map_location=device))
+        self.agent = Agent().to(device)
+        self.agent.load_state_dict(torch.load(model_path, map_location=device))
         self.agent.eval()
-        self.agent.epsilon = 0.0  # Disable exploration for the agent
+        
+        # Shared state with multiprocessing safe locks
+        self.shared = manager.dict({
+            'rating': 1500,
+            'uncertainty': 150,
+            'games_played': 0,
+            'lock': manager.Lock()
+        })
+
+    @property
+    def rating(self):
+        return self.shared['rating']
+
+    @property
+    def uncertainty(self):
+        return self.shared['uncertainty']
+
+    @property
+    def games_played(self):
+        return self.shared['games_played']
 
     def __str__(self):
-        return f"{self.name}: Rating={self.rating:.2f}, Uncertainty={self.uncertainty:.2f}"
+        return f"{self.name}: {self.rating}±{self.uncertainty}"
 
 def play_game(white: Player, black: Player) -> int:
-    """
-    Simulate a game between two players.
-    The win probability is computed using the Elo expected score formula.
-    Returns:
-      1 if white wins,
-      0 if black wins.
-    """
     game = LongNardy()
+    current_players = [white, black]
+    
     while not game.is_finished():
-        if game.state.is_white:
-            player = white
-        else:
-            player = black
+        player = current_players[0] if game.state.is_white else current_players[1]
         candidate_states = game.get_states_after_dice()
-
+        
         if not candidate_states:
-            # Handle no valid moves by passing turn
             game.apply_dice(game.state)
             continue
-
-        chosen_state = player.agent.epsilon_greedy(candidate_states)
-        game.step(chosen_state)
-
-        if game.is_finished():
-            if game.state.white_off == 15:
-                return 1
-            else:
-                return 0
             
-
-def update_rating(player, opponent, score, k_factor):
-    """
-    Update a player's rating based on the result of a match.
+        values = [player.agent.evaluate(state) for state in candidate_states]
+        game.step(candidate_states[np.argmax(values)])
     
-    player: The player whose rating is updated.
-    opponent: The opponent player.
-    score: Actual score (1 for win, 0 for loss).
-    k_factor: The dynamic K factor based on player's uncertainty.
-    """
-    expected = 1.0 / (1.0 + 10 ** ((opponent.rating - player.rating) / 400))
-    delta = k_factor * (score - expected)
-    player.rating += delta
-    # Decrease uncertainty (but not below 50)
-    player.uncertainty = max(50, player.uncertainty * 0.95)
+    return 1 if game.state.white_off == 15 else 0
 
-def match_game(white, black):
-    """
-    Simulate a match between two players (white and black), update their ratings, and return the result.
-    """
+def update_ratings(winner: Player, loser: Player):
+    with winner.shared['lock'], loser.shared['lock']:
+        # Calculate uncertainty-compressed difference
+        combined_uncertainty = (winner.uncertainty + loser.uncertainty) / 200
+        rating_diff = (loser.rating - winner.rating) / max(1, combined_uncertainty)
+        
+        expected = 1 / (1 + 10 ** (rating_diff / 400))
+        actual_k = 32 * min(winner.uncertainty, loser.uncertainty) / 100
+        delta = int(actual_k * (1 - expected))
+        
+        # Apply zero-sum updates
+        winner.shared['rating'] += delta
+        loser.shared['rating'] -= delta
+        
+        # Update uncertainties with adaptive decay
+        decay_rate = 0.98 if min(winner.games_played, loser.games_played) < 50 else 0.995
+        for p in [winner, loser]:
+            new_uncertainty = p.uncertainty * decay_rate
+            p.shared['uncertainty'] = max(30, new_uncertainty)
+            p.shared['games_played'] += 1
+
+def match_game(pair):
+    white, black = pair
     result = play_game(white, black)
-
-    # Determine K factor based on current uncertainty:
-    def k_factor(player):
-        if player.uncertainty > 100:
-            return 80
-        elif player.uncertainty > 50:
-            return 40
-        else:
-            return 20
-
-    k_white = k_factor(white)
-    k_black = k_factor(black)
-
-    # Acquire both locks to safely update ratings concurrently.
-    with white.lock, black.lock:
-        if result == 1:
-            # White wins, black loses.
-            update_rating(white, black, 1, k_white)
-            update_rating(black, white, 0, k_black)
-        else:
-            # Black wins, white loses.
-            update_rating(white, black, 0, k_white)
-            update_rating(black, white, 1, k_black)
+    
+    if result == 1:
+        update_ratings(white, black)
+    else:
+        update_ratings(black, white)
     return result
 
 def schedule_matches(players, num_matches):
-    """
-    Create a list of random pairings for matches.
-    Each match is a tuple (white, black), randomly selected from the players list.
-    """
+    """Generate matches with empty bucket protection"""
+    buckets = {}
+    # Create buckets with atomic rating reads
+    for p in players:
+        with p.shared['lock']:  # Lock while reading rating
+            bucket = p.rating // 25
+        buckets.setdefault(bucket, []).append(p)
+    
     matches = []
+    valid_buckets = {k: v for k, v in buckets.items() if len(v) >= 1}
+    bucket_keys = sorted(valid_buckets.keys())
+    
     for _ in range(num_matches):
-        white, black = random.sample(players, 2)
-        matches.append((white, black))
+        if not bucket_keys:
+            break  # No valid players
+        
+        # Generate possible pairs safely
+        pair_options = []
+        for k in bucket_keys:
+            # Intra-bucket pairs (requires at least 2 players)
+            if len(valid_buckets[k]) >= 2:
+                pair_options.append((k, k))
+            # Inter-bucket pairs with next bucket
+            if k+25 in bucket_keys:
+                pair_options.append((k, k+25))
+        
+        if not pair_options:
+            break  # No valid match options
+        
+        b1, b2 = random.choice(pair_options)
+        
+        # Safe player selection with population check
+        try:
+            candidates = valid_buckets[b1]
+            p1 = random.choice(candidates)
+            
+            if b1 == b2:  # Intra-bucket match
+                candidates = [p for p in candidates if p != p1]
+                if not candidates:
+                    continue
+                p2 = random.choice(candidates)
+            else:  # Inter-bucket match
+                p2 = random.choice(valid_buckets[b2])
+                
+            matches.append((p1, p2))
+        except (KeyError, IndexError):
+            continue
+    
     return matches
 
-def save_results_to_csv(players, filename="final_ratings.csv"):
-    """Save player ratings to a CSV file."""
-    with open(filename, "w", newline="") as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(["Player Name", "Elo Rating", "Uncertainty"])
-        for player in players:
-            writer.writerow([player.name, round(player.rating, 2), round(player.uncertainty, 2)])
-    print(f"Results saved to {filename}")
+def save_results(players: List[Player], filename="ratings.csv"):
+    with open(filename, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Rank", "Name", "Rating", "Uncertainty", "Games"])
+        sorted_players = sorted(players, key=lambda p: -p.rating)
+        for i, p in enumerate(sorted_players, 1):
+            writer.writerow([i, p.name, p.rating, p.uncertainty, p.games_played])
 
 def main():
-    players = []
-    current_directory = Path(__file__).parent
-    for path in os.listdir(current_directory / "v2"):
-        if path.endswith(".pth"):
-            player_name = path.split(".")[0]
-            player_path = current_directory / "v2" / path
-            players.append(Player(player_name, player_path))
-
-    print(f"Loaded {len(players)} players.")
-    
-    # Determine how many matches to run.
-    # For instance, within 2 days (172800 seconds) and 0.5 seconds per game,
-    # the maximum number of matches is 345,600.
-    # Here, we simulate a smaller number (e.g., 10000 matches) as a demo.
-    num_matches = 150000
-
-    # Using a ThreadPoolExecutor to run matches concurrently.
-    max_workers = os.cpu_count()
-    print(f"Starting {num_matches} matches with {max_workers} threads.")
-    start_time = time.time()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
-        for white, black in schedule_matches(players, num_matches):
-            futures.append(executor.submit(match_game, white, black))
-        # Optionally, process results as they complete.
-        for future in concurrent.futures.as_completed(futures):
-            try:
-                _ = future.result()
-            except Exception as exc:
-                print(f"A game generated an exception: {exc}")
-
-    elapsed = time.time() - start_time
-    print(f"Completed {num_matches} matches in {elapsed:.2f} seconds.\nFinal player ratings:")
-    for player in players:
-        print(player)
-
-    save_results_to_csv(players)
-    print("All matches completed.")
+    with Manager() as manager:
+        model_dir = Path(__file__).parent / "v2"
+        players = [
+            Player(f.stem, str(f), manager)
+            for f in model_dir.glob("*.pth")
+        ]
+        
+        num_matches = 300000
+        start_time = time.time()
+        
+        with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+            # Generate matches in batches
+            batch_size = 1000
+            for _ in range(num_matches // batch_size):
+                matches = schedule_matches(players, batch_size)
+                list(executor.map(match_game, matches))
+                
+        print(f"Completed {num_matches} matches in {time.time()-start_time:.2f}s")
+        save_results(players)
 
 if __name__ == '__main__':
     main()
