@@ -50,7 +50,9 @@ class Player:
     def __init__(self, name, model_path, manager):
         self.name = name
         self.agent = Agent().to(device)
-        self.agent.load_state_dict(torch.load(model_path, map_location=device))
+        with open(model_path, 'rb') as f:
+            state_dict = torch.load(f, map_location=device)
+        self.agent.load_state_dict(state_dict)
         self.agent.eval()
         
         # Shared state with multiprocessing safe locks
