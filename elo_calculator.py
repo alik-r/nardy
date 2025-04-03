@@ -85,7 +85,9 @@ def play_game(white: Player, black: Player) -> int:
     game = LongNardy()
     current_players = [white, black]
     
+    i=0
     while not game.is_finished():
+        i+=1
         player = current_players[0] if game.state.is_white else current_players[1]
         candidate_states = game.get_states_after_dice()
         
@@ -95,6 +97,10 @@ def play_game(white: Player, black: Player) -> int:
             
         values = [player.agent.evaluate(state) for state in candidate_states]
         game.step(candidate_states[np.argmax(values)])
+        if i > 1000:
+            print("Game took too long, aborting.")
+            break
+
     
     return 1 if game.state.white_off == 15 else 0
 
