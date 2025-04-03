@@ -3,17 +3,28 @@ import time
 import csv
 from pathlib import Path
 from typing import List
-from multiprocessing import Manager, cpu_count, Lock
+from multiprocessing import Manager, cpu_count
 import concurrent.futures
 import numpy as np
 import torch
 from torch import nn
-from long_nardy import LongNardy
-from state import State
+import logging
+from datetime import datetime
+import psutil
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(f'longnardy_tournament_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 device = torch.device("cpu")
 
-# Original ANN and Agent implementations preserved
 class ANN(nn.Module):
     def __init__(self):
         super().__init__()
@@ -52,6 +63,17 @@ class SharedState:
         self.uncertainty = manager.Value('i', 150)
         self.games_played = manager.Value('i', 0)
         self.lock = manager.Lock()
+    
+    def acquire_lock(self, player_name, purpose, timeout=10):
+        logger.debug(f"Player {player_name} waiting for lock ({purpose})")
+        acquired = self.lock.acquire(timeout=timeout)
+        if not acquired:
+            raise TimeoutError(f"Could not acquire lock for {player_name} ({purpose}) after {timeout}s")
+        logger.debug(f"Player {player_name} acquired lock ({purpose})")
+    
+    def release_lock(self, player_name, purpose):
+        self.lock.release()
+        logger.debug(f"Player {player_name} released lock ({purpose})")
 
 class Player:
     def __init__(self, name, model_path, manager):
@@ -65,29 +87,39 @@ class Player:
 
     @property
     def rating(self):
-        with self.shared.lock:
+        self.shared.acquire_lock(self.name, "get rating")
+        try:
             return self.shared.rating.value
+        finally:
+            self.shared.release_lock(self.name, "get rating")
 
     @property
     def uncertainty(self):
-        with self.shared.lock:
+        self.shared.acquire_lock(self.name, "get uncertainty")
+        try:
             return self.shared.uncertainty.value
+        finally:
+            self.shared.release_lock(self.name, "get uncertainty")
 
     @property
     def games_played(self):
-        with self.shared.lock:
+        self.shared.acquire_lock(self.name, "get games_played")
+        try:
             return self.shared.games_played.value
+        finally:
+            self.shared.release_lock(self.name, "get games_played")
 
     def __str__(self):
         return f"{self.name}: {self.rating}±{self.uncertainty}"
 
 def play_game(white: Player, black: Player) -> int:
+    logger.info(f"Starting game: {white.name} (white) vs {black.name} (black)")
     game = LongNardy()
     current_players = [white, black]
+    move_count = 0
     
-    i=0
     while not game.is_finished():
-        i+=1
+        move_count += 1
         player = current_players[0] if game.state.is_white else current_players[1]
         candidate_states = game.get_states_after_dice()
         
@@ -97,16 +129,26 @@ def play_game(white: Player, black: Player) -> int:
             
         values = [player.agent.evaluate(state) for state in candidate_states]
         game.step(candidate_states[np.argmax(values)])
-        if i > 1000:
-            print("Game took too long, aborting.")
-            break
-
+        
+        if move_count % 10 == 0:
+            logger.debug(f"Game progress - move {move_count}: {player.name} playing")
     
-    return 1 if game.state.white_off == 15 else 0
+    result = 1 if game.state.white_off == 15 else 0
+    logger.info(f"Game finished: {white.name} {'won' if result == 1 else 'lost'} "
+               f"against {black.name} in {move_count} moves")
+    return result
 
 def update_ratings(winner: Player, loser: Player):
+    logger.info(f"Updating ratings: {winner.name} vs {loser.name}")
+    
     first, second = sorted([winner, loser], key=lambda p: p.name)
-    with first.shared.lock, second.shared.lock:
+    first.shared.acquire_lock(first.name, "update ratings (first)")
+    second.shared.acquire_lock(second.name, "update ratings (second)")
+    
+    try:
+        logger.debug(f"Pre-update - {winner.name}: {winner.rating}±{winner.uncertainty}, "
+                    f"{loser.name}: {loser.rating}±{loser.uncertainty}")
+        
         combined_uncertainty = (winner.uncertainty + loser.uncertainty) / 200
         rating_diff = (loser.rating - winner.rating) / max(1, combined_uncertainty)
         
@@ -122,18 +164,30 @@ def update_ratings(winner: Player, loser: Player):
             new_uncertainty = int(p.uncertainty * decay_rate)
             p.shared.uncertainty.value = max(30, new_uncertainty)
             p.shared.games_played.value += 1
+        
+        logger.debug(f"Post-update - {winner.name}: {winner.rating}±{winner.uncertainty}, "
+                    f"{loser.name}: {loser.rating}±{loser.uncertainty}")
+    finally:
+        second.shared.release_lock(second.name, "update ratings (second)")
+        first.shared.release_lock(first.name, "update ratings (first)")
 
 def match_game(pair):
-    white, black = pair
-    result = play_game(white, black)
-    
-    if result == 1:
-        update_ratings(white, black)
-    else:
-        update_ratings(black, white)
-    return result
+    try:
+        white, black = pair
+        logger.debug(f"Starting match between {white.name} and {black.name}")
+        result = play_game(white, black)
+        
+        if result == 1:
+            update_ratings(white, black)
+        else:
+            update_ratings(black, white)
+        return result
+    except Exception as e:
+        logger.error(f"Error in match between {pair[0].name} and {pair[1].name}: {str(e)}")
+        return None
 
 def schedule_matches(players, num_matches):
+    logger.info(f"Scheduling {num_matches} matches among {len(players)} players")
     buckets = {}
     for p in players:
         bucket = p.rating // 25
@@ -172,10 +226,17 @@ def schedule_matches(players, num_matches):
                 p2 = random.choice(valid_buckets[b2])
                 
             matches.append((p1, p2))
-        except (KeyError, IndexError):
+        except (KeyError, IndexError) as e:
+            logger.warning(f"Error scheduling match: {str(e)}")
             continue
     
+    logger.debug(f"Generated {len(matches)} matches for this batch")
     return matches
+
+def log_system_status():
+    mem = psutil.virtual_memory()
+    logger.info(f"System status - CPU: {psutil.cpu_percent()}%, "
+               f"Memory: {mem.used/1024/1024:.1f}MB used ({mem.percent}%)")
 
 def save_results(players: List[Player], filename="ratings.csv"):
     with open(filename, 'w', newline='') as f:
@@ -184,6 +245,7 @@ def save_results(players: List[Player], filename="ratings.csv"):
         sorted_players = sorted(players, key=lambda p: -p.rating)
         for i, p in enumerate(sorted_players, 1):
             writer.writerow([i, p.name, p.rating, p.uncertainty, p.games_played])
+    logger.info(f"Saved results to {filename}")
 
 def main():
     with Manager() as manager:
@@ -193,20 +255,37 @@ def main():
             for f in model_dir.glob("*.pth")
         ]
         
+        # Share model memory in the main process
         for p in players:
             p.agent.net.share_memory()
         
         num_matches = 300000
         start_time = time.time()
+        logger.info(f"Starting tournament with {len(players)} players")
         
         with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
             batch_size = 1000
-            for _ in range(num_matches // batch_size):
-                matches = schedule_matches(players, batch_size)
-                executor.map(match_game, matches)
-                print(f"Completed {batch_size} matches in {time.time()-start_time:.2f}s")
+            total_completed = 0
             
-        print(f"Completed {num_matches} matches in {time.time()-start_time:.2f}s")
+            for batch_num in range(num_matches // batch_size):
+                log_system_status()
+                logger.info(f"Starting batch {batch_num + 1}")
+                
+                matches = schedule_matches(players, batch_size)
+                results = list(executor.map(match_game, matches))
+                
+                completed = len([r for r in results if r is not None])
+                total_completed += completed
+                logger.info(f"Batch {batch_num + 1} completed: {completed} matches "
+                           f"(total: {total_completed}, elapsed: {time.time()-start_time:.2f}s)")
+                
+                # Save intermediate results every 10 batches
+                if (batch_num + 1) % 10 == 0:
+                    save_results(players)
+                    logger.info("Saved intermediate results")
+        
+        logger.info(f"Tournament completed: {total_completed} matches played in "
+                   f"{time.time()-start_time:.2f} seconds")
         save_results(players)
 
 if __name__ == '__main__':
