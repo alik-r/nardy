@@ -37,6 +37,10 @@ class Agent(nn.Module):
     def __init__(self, model_path):
         super().__init__()
         self.net = ANN().to(device)
+        self.epsilon = 0
+        self.lr = 0
+        self.eligibility_traces = {name: torch.zeros_like(param) 
+                                 for name, param in self.net.named_parameters()}
         with open(model_path, 'rb') as f:
             state_dict = torch.load(f, map_location=device)
         self.net.load_state_dict(state_dict)
