@@ -143,32 +143,40 @@ def play_game(white: Player, black: Player) -> int:
 def update_ratings(winner: Player, loser: Player):
     logger.info(f"Updating ratings: {winner.name} vs {loser.name}")
     
+    # Get raw values without using properties to avoid nested locks
+    def get_values(p):
+        return (p.shared.rating.value, p.shared.uncertainty.value, p.shared.games_played.value)
+    
     first, second = sorted([winner, loser], key=lambda p: p.name)
     first.shared.acquire_lock(first.name, "update ratings (first)")
     second.shared.acquire_lock(second.name, "update ratings (second)")
     
     try:
-        logger.debug(f"Pre-update - {winner.name}: {winner.rating}±{winner.uncertainty}, "
-                    f"{loser.name}: {loser.rating}±{loser.uncertainty}")
+        # Access shared values directly since we already hold the locks
+        wr, wu, wg = get_values(winner)
+        lr, lu, lg = get_values(loser)
         
-        combined_uncertainty = (winner.uncertainty + loser.uncertainty) / 200
-        rating_diff = (loser.rating - winner.rating) / max(1, combined_uncertainty)
+        logger.debug(f"Pre-update - {winner.name}: {wr}±{wu}, {loser.name}: {lr}±{lu}")
         
+        combined_uncertainty = (wu + lu) / 200
+        rating_diff = (lr - wr) / max(1, combined_uncertainty)
         expected = 1 / (1 + 10 ** (rating_diff / 400))
-        actual_k = 32 * min(winner.uncertainty, loser.uncertainty) / 100
+        actual_k = 32 * min(wu, lu) / 100
         delta = int(actual_k * (1 - expected))
         
+        # Update values directly
         winner.shared.rating.value += delta
         loser.shared.rating.value -= delta
         
-        decay_rate = 0.98 if min(winner.games_played, loser.games_played) < 50 else 0.995
+        decay_rate = 0.98 if min(wg, lg) < 50 else 0.995
         for p in [winner, loser]:
-            new_uncertainty = int(p.uncertainty * decay_rate)
+            current_uncertainty = p.shared.uncertainty.value
+            new_uncertainty = int(current_uncertainty * decay_rate)
             p.shared.uncertainty.value = max(30, new_uncertainty)
             p.shared.games_played.value += 1
         
-        logger.debug(f"Post-update - {winner.name}: {winner.rating}±{winner.uncertainty}, "
-                    f"{loser.name}: {loser.rating}±{loser.uncertainty}")
+        logger.debug(f"Post-update - {winner.name}: {winner.shared.rating.value}±{winner.shared.uncertainty.value}, "
+                    f"{loser.name}: {loser.shared.rating.value}±{loser.shared.uncertainty.value}")
     finally:
         second.shared.release_lock(second.name, "update ratings (second)")
         first.shared.release_lock(first.name, "update ratings (first)")
