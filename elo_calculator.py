@@ -193,13 +193,13 @@ def main():
             for f in model_dir.glob("*.pth")
         ]
         
+        for p in players:
+            p.agent.net.share_memory()
+        
         num_matches = 300000
         start_time = time.time()
         
-        with concurrent.futures.ProcessPoolExecutor(
-            max_workers=cpu_count(),
-            initializer=lambda: [p.agent.share_memory() for p in players]
-        ) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
             batch_size = 1000
             for _ in range(num_matches // batch_size):
                 matches = schedule_matches(players, batch_size)
