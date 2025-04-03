@@ -198,7 +198,7 @@ def main():
             for _ in range(num_matches // batch_size):
                 matches = schedule_matches(players, batch_size)
                 executor.map(match_game, matches)
-                print(f"Completed {batch_size} matches")
+                print(f"Completed {batch_size} matches in {time.time()-start_time:.2f}s")
             
         print(f"Completed {num_matches} matches in {time.time()-start_time:.2f}s")
         save_results(players)
