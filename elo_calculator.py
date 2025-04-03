@@ -3,7 +3,7 @@ import time
 import csv
 from pathlib import Path
 from typing import List
-from multiprocessing import Manager, cpu_count
+from multiprocessing import Value, Lock, cpu_count
 import concurrent.futures
 import numpy as np
 import torch
@@ -16,7 +16,6 @@ device = torch.device("cpu")
 class ANN(nn.Module):
     def __init__(self):
         super().__init__()
-
         self.net = nn.Sequential(
             nn.Linear(98, 128),
             nn.ReLU(),
@@ -38,7 +37,7 @@ class Agent(nn.Module):
         self.epsilon = epsilon
         self.lr = lr
         self.eligibility_traces = {name: torch.zeros_like(param) 
-                                  for name, param in self.net.named_parameters()}
+                                 for name, param in self.net.named_parameters()}
         
     def evaluate(self, state: State) -> float:
         state_tensor = torch.tensor(state.get_representation_for_current_player(),
@@ -47,7 +46,7 @@ class Agent(nn.Module):
             return self.net(state_tensor).item()
         
 class Player:
-    def __init__(self, name, model_path, manager):
+    def __init__(self, name, model_path):
         self.name = name
         self.agent = Agent().to(device)
         with open(model_path, 'rb') as f:
@@ -55,25 +54,26 @@ class Player:
         self.agent.load_state_dict(state_dict)
         self.agent.eval()
         
-        # Shared state with multiprocessing safe locks
-        self.shared = manager.dict({
-            'rating': 1500,
-            'uncertainty': 150,
-            'games_played': 0,
-            'lock': manager.Lock()
-        })
+        # Use multiprocessing-safe shared variables
+        self._rating = Value('i', 1500)
+        self._uncertainty = Value('i', 150)
+        self._games_played = Value('i', 0)
+        self.lock = Lock()
 
     @property
     def rating(self):
-        return self.shared['rating']
+        with self.lock:
+            return self._rating.value
 
     @property
     def uncertainty(self):
-        return self.shared['uncertainty']
+        with self.lock:
+            return self._uncertainty.value
 
     @property
     def games_played(self):
-        return self.shared['games_played']
+        with self.lock:
+            return self._games_played.value
 
     def __str__(self):
         return f"{self.name}: {self.rating}±{self.uncertainty}"
@@ -96,7 +96,9 @@ def play_game(white: Player, black: Player) -> int:
     return 1 if game.state.white_off == 15 else 0
 
 def update_ratings(winner: Player, loser: Player):
-    with winner.shared['lock'], loser.shared['lock']:
+    # Acquire locks in consistent order to prevent deadlocks
+    first, second = sorted([winner, loser], key=lambda p: p.name)
+    with first.lock, second.lock:
         # Calculate uncertainty-compressed difference
         combined_uncertainty = (winner.uncertainty + loser.uncertainty) / 200
         rating_diff = (loser.rating - winner.rating) / max(1, combined_uncertainty)
@@ -106,15 +108,15 @@ def update_ratings(winner: Player, loser: Player):
         delta = int(actual_k * (1 - expected))
         
         # Apply zero-sum updates
-        winner.shared['rating'] += delta
-        loser.shared['rating'] -= delta
+        winner._rating.value += delta
+        loser._rating.value -= delta
         
         # Update uncertainties with adaptive decay
         decay_rate = 0.98 if min(winner.games_played, loser.games_played) < 50 else 0.995
         for p in [winner, loser]:
-            new_uncertainty = p.uncertainty * decay_rate
-            p.shared['uncertainty'] = max(30, new_uncertainty)
-            p.shared['games_played'] += 1
+            new_uncertainty = int(p.uncertainty * decay_rate)
+            p._uncertainty.value = max(30, new_uncertainty)
+            p._games_played.value += 1
 
 def match_game(pair):
     white, black = pair
@@ -131,8 +133,7 @@ def schedule_matches(players, num_matches):
     buckets = {}
     # Create buckets with atomic rating reads
     for p in players:
-        with p.shared['lock']:  # Lock while reading rating
-            bucket = p.rating // 25
+        bucket = p.rating // 25
         buckets.setdefault(bucket, []).append(p)
     
     matches = []
@@ -186,26 +187,25 @@ def save_results(players: List[Player], filename="ratings.csv"):
             writer.writerow([i, p.name, p.rating, p.uncertainty, p.games_played])
 
 def main():
-    with Manager() as manager:
-        model_dir = Path(__file__).parent / "v2"
-        players = [
-            Player(f.stem, str(f), manager)
-            for f in model_dir.glob("*.pth")
-        ]
-        
-        num_matches = 300000
-        start_time = time.time()
-        
-        with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
-            # Generate matches in batches
-            batch_size = 1000
-            for _ in range(num_matches // batch_size):
-                matches = schedule_matches(players, batch_size)
-                list(executor.map(match_game, matches))
-            print(f"completed batch in {time.time()-start_time:.2f}s")
-                
-        print(f"Completed {num_matches} matches in {time.time()-start_time:.2f}s")
-        save_results(players)
+    model_dir = Path(__file__).parent / "v2"
+    players = [
+        Player(f.stem, str(f))
+        for f in model_dir.glob("*.pth")
+    ]
+    
+    num_matches = 300000
+    start_time = time.time()
+    
+    with concurrent.futures.ProcessPoolExecutor(max_workers=cpu_count()) as executor:
+        # Generate matches in batches
+        batch_size = 1000
+        for _ in range(num_matches // batch_size):
+            matches = schedule_matches(players, batch_size)
+            list(executor.map(match_game, matches))
+        print(f"completed batch in {time.time()-start_time:.2f}s")
+            
+    print(f"Completed {num_matches} matches in {time.time()-start_time:.2f}s")
+    save_results(players)
 
 if __name__ == '__main__':
     main()
