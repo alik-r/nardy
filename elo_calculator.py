@@ -11,6 +11,8 @@ from torch import nn
 import logging
 from datetime import datetime
 import psutil
+from state import State
+from long_nardy import LongNardy
 
 # Configure logging
 logging.basicConfig(
