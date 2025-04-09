@@ -9,7 +9,7 @@ import csv
 import concurrent.futures
 from multiprocessing import cpu_count
 
-MATCH_COUNT = 1000
+MATCH_COUNT = 10000
 MAX_WORKERS = cpu_count()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
