@@ -45,6 +45,16 @@ class Agent(nn.Module):
                                   dtype=torch.float32).to(device)
         with torch.no_grad():
             return self.net(state_tensor).item()
+        
+    def epsilon_greedy(self, candidate_states: List[State]) -> State:
+        best_value = float('-inf')
+        best_state = None
+        for state in candidate_states:
+            value = self.evaluate(state)
+            if value > best_value:
+                best_value = value
+                best_state = state
+        return best_state
 
 class RandomAgent:
     def epsilon_greedy(self, candidate_states: List[State]) -> State:
