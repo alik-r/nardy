@@ -125,7 +125,7 @@ def main():
     model_paths = list(models_folder.glob("*.pth"))
     
     results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         future_to_model = {executor.submit(evaluate_model, model_path): model_path for model_path in model_paths}
         for future in concurrent.futures.as_completed(future_to_model):
             result = future.result()
