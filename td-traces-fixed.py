@@ -1,11 +1,14 @@
+#!/usr/bin/env python
+# coding: utf-8
+
 import torch
 from torch import nn
 import numpy as np
+from pathlib import Path
 from long_nardy import LongNardy
 from state import State
 from typing import Tuple, List
 import time
-import os
 
 device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 print(f"Using {device} device")
@@ -62,25 +65,30 @@ class Agent(nn.Module):
             chosen_state = candidate_states[chosen_idx]
         return chosen_state
 
+# Set up paths
+current_dir = Path.cwd()
+save_dir = current_dir / "v2"
+save_dir.mkdir(parents=True, exist_ok=True)
+
 # Initialize agent and load pretrained weights
 agent = Agent(lr=0.001, epsilon=0.05)
-pretrained_path = "/v2/td_gammon_selfplay_995000.pth"
-agent.load_state_dict(torch.load(pretrained_path, map_location=device))
+pretrained_path = current_dir / "v2" / "td_gammon_selfplay_995000.pth"
+
+if pretrained_path.exists():
+    agent.load_state_dict(torch.load(pretrained_path, map_location=device))
+    print(f"Loaded pretrained weights from {pretrained_path}")
+else:
+    print(f"No pretrained weights found at {pretrained_path}, starting from scratch")
 
 # Extract starting episode from filename
-filename = os.path.basename(pretrained_path)
-base_name = os.path.splitext(filename)[0]
-starting_episode = int(base_name.split('_')[-1])
-
-# Configure training parameters
+start_episode = int(pretrained_path.stem.split("_")[-1]) if pretrained_path.exists() else 0
 num_additional_episodes = 2000000
-start_episode = starting_episode + 1
 end_episode = start_episode + num_additional_episodes
 save_interval = 5000
-total_start_time = time.time()
 
-# Modified training loop
-for episode in range(start_episode, end_episode):
+# Training loop
+total_start_time = time.time()
+for episode in range(start_episode + 1, end_episode + 1):
     game = LongNardy()
     agent.reset_eligibility_traces()
     done = False
@@ -116,12 +124,18 @@ for episode in range(start_episode, end_episode):
 
     # Save checkpoint and log progress
     if episode % save_interval == 0:
-        mean_td_error = sum(td_errors)/len(td_errors) if td_errors else 0
-        max_td_error = max(td_errors) if td_errors else 0
-        min_td_error = min(td_errors) if td_errors else 0
-
-        torch.save(agent.state_dict(), f"saves/td_gammon_selfplay_{episode}.pth")
-        total_elapsed_time = time.time() - total_start_time
-        print(f"Episode {episode} | Mean TD: {mean_td_error:.4f} | "
-              f"Max TD: {max_td_error:.4f} | Min TD: {min_td_error:.4f} | "
-              f"Time: {total_elapsed_time:.2f}s")
+        checkpoint_path = save_dir / f"td_gammon_selfplay_{episode}.pth"
+        torch.save(agent.state_dict(), checkpoint_path)
+        
+        stats = {
+            'mean_td': sum(td_errors)/len(td_errors) if td_errors else 0,
+            'max_td': max(td_errors) if td_errors else 0,
+            'min_td': min(td_errors) if td_errors else 0,
+            'time': time.time() - total_start_time
+        }
+        
+        print((f"Episode {episode} | "
+               f"Mean TD: {stats['mean_td']:.4f} | "
+               f"Max TD: {stats['max_td']:.4f} | "
+               f"Min TD: {stats['min_td']:.4f} | "
+               f"Time: {stats['time']:.2f}s"))
