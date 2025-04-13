@@ -72,7 +72,7 @@ save_dir.mkdir(parents=True, exist_ok=True)
 
 # Initialize agent and load pretrained weights
 agent = Agent(lr=0.001, epsilon=0.05)
-pretrained_path = current_dir / "v2" / "td_gammon_selfplay_1170000.pth"
+pretrained_path = current_dir / "v2" / "td_gammon_selfplay_995000.pth"
 
 if pretrained_path.exists():
     agent.load_state_dict(torch.load(pretrained_path, map_location=device))
@@ -106,13 +106,11 @@ for episode in range(start_episode + 1, end_episode + 1):
         chosen_state = agent.epsilon_greedy(candidate_states)
         game.step(chosen_state)
 
-        if game.is_finished():
-            done = True
-            td_error = 1 - current_value.detach()
-        else:
-            next_value = agent.get_value(game.state, grad=False)
-            td_error = (1 - next_value) - current_value.detach()
-            
+        reward = 1 if game.is_finished() else 0
+        done = game.is_finished()
+        next_value = agent.get_value(game.state, grad=False)
+
+        td_error = reward + (1 - next_value) - current_value.detach()
         if td_errors is not None:
             td_errors.append(td_error.item())
 
