@@ -71,7 +71,7 @@ save_dir = current_dir / "v2"
 save_dir.mkdir(parents=True, exist_ok=True)
 
 # Initialize agent and load pretrained weights
-agent = Agent(lr=0.002, epsilon=0.05)
+agent = Agent(lr=0.001, epsilon=0.05)
 pretrained_path = current_dir / "v2" / "td_gammon_selfplay_1170000.pth"
 
 if pretrained_path.exists():
