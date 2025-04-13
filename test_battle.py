@@ -70,7 +70,7 @@ class Agent(nn.Module):
 strong = Agent()
 
 current_directory = Path(__file__).parent
-path = current_directory / "v2" / "td_gammon_selfplay_1165000.pth"
+path = current_directory / "v2" / "td_gammon_selfplay_1260000.pth"
 
 strong.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 
@@ -87,7 +87,7 @@ random = RandomAgent()
 def test_battle():
     weak_wins = 0
     strong_wins = 0
-    for i in range(10000):
+    for i in range(1000):
         print(f"Game {i}, Weak wins: {weak_wins}, Strong wins: {strong_wins}")
         side = True if i % 2 == 1 else False
         game = LongNardy()
