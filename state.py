@@ -34,6 +34,19 @@ class State:
         # Flag to enforce that only one move from the head is allowed per turn.
         self.head_moved = False
 
+        self.white_precomputed_distances = np.array([1, 2, 3, 4, 5, 6,
+                                                     7, 8, 9, 10, 11, 12,
+                                                     13, 14, 15, 16, 17, 18,
+                                                     19, 20, 21, 22, 23, 24])
+
+        self.black_precomputed_distances = np.array([
+            13, 14, 15, 16, 17, 18,   # 0–5
+            19, 20, 21, 22, 23, 24,   # 6–11
+            1,  2,  3,  4,  5,  6,    # 12–17
+            7,  8,  9, 10, 11, 12     # 18–23
+        ])
+
+
     def reset(self):
         """
         Resets the state to initial state
@@ -127,21 +140,52 @@ class State:
 
         current_mask = board > 0
         opponent_mask = board < 0
+
+        current_distances = (board > 0) * board * self.white_precomputed_distances
+        opponent_distances = (board < 0) * -board * self.black_precomputed_distances
+
+        current_dist_sum = np.sum(current_distances)
+        opponent_dist_sum = np.sum(opponent_distances)
+
+        scaled_current = current_dist_sum / 360.0
+        scaled_opponent = opponent_dist_sum / 360.0
+
+        current_home_pieces =  np.sum(board[0:6])
+        opponent_home_pieces = np.sum(board[12:18])
+
+        can_current_bear_off = current_home_pieces == 15
+        can_opponent_bear_off = opponent_home_pieces == 15
+
+        scaled_current_home = current_home_pieces / 15.0
+        scaled_opponent_home = opponent_home_pieces / 15.0
+
+        current_points = np.sum(current_mask) / 15.0
+        opponent_points = np.sum(opponent_mask) / 15.0
+
         # for each position 1 if there is our piece, 0 otherwise
         state_tensor[current_mask, 0] = 1
         # for each position number of our pieces - 1
-        state_tensor[current_mask, 1] = np.maximum(board[current_mask], 1) - 1
+        state_tensor[current_mask, 1] = np.maximum(board[current_mask], 1) / 15.0
 
         # for each position 1 if there is opponent piece, 0 otherwise
         state_tensor[opponent_mask, 2] = 1
         # for each position number of opponent pieces - 1
-        state_tensor[opponent_mask, 3] = np.maximum(-board[opponent_mask], 1) - 1
+        state_tensor[opponent_mask, 3] = np.maximum(-board[opponent_mask], 1) / 15.0
 
-        off = np.zeros(2, dtype=np.float32)
-        off[0] = self.white_off / 15 if self.is_white else self.black_off / 15
-        off[1] = self.black_off / 15 if self.is_white else self.white_off / 15
+        current_off = self.white_off / 15 if self.is_white else self.black_off / 15
+        opponent_off = self.black_off / 15 if self.is_white else self.white_off / 15
 
-        result = np.concatenate((state_tensor.flatten(), off))
+        features = np.array([
+            scaled_current, scaled_opponent,
+            can_current_bear_off, can_opponent_bear_off,
+            scaled_current_home, scaled_opponent_home,
+            current_points, opponent_points,
+            current_off, opponent_off,
+        ], dtype=np.float32)
+
+        print(f"state_tensor type: {state_tensor.dtype}, features type: {features.dtype}")
+
+        result = np.concatenate((state_tensor.flatten(), features))
         return result
 
     

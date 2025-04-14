@@ -17,7 +17,7 @@ class ANN(nn.Module):
     def __init__(self):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(98, 128),
+            nn.Linear(106, 128),
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
@@ -67,12 +67,12 @@ class Agent(nn.Module):
 
 # Set up paths
 current_dir = Path.cwd()
-save_dir = current_dir / "v2"
+save_dir = current_dir / "v4"
 save_dir.mkdir(parents=True, exist_ok=True)
 
 # Initialize agent and load pretrained weights
-agent = Agent(lr=0.001, epsilon=0.05)
-pretrained_path = current_dir / "v2" / "td_gammon_selfplay_1170000.pth"
+agent = Agent(lr=0.005, epsilon=0.05)
+pretrained_path = current_dir / "v2" / "test.pth"
 
 if pretrained_path.exists():
     agent.load_state_dict(torch.load(pretrained_path, map_location=device))
