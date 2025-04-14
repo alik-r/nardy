@@ -76,6 +76,18 @@ class State:
 
         new_state.dice_remaining = self.dice_remaining.copy()
 
+        new_state.white_precomputed_distances = np.array([1, 2, 3, 4, 5, 6,
+                                                     7, 8, 9, 10, 11, 12,
+                                                     13, 14, 15, 16, 17, 18,
+                                                     19, 20, 21, 22, 23, 24])
+
+        new_state.black_precomputed_distances = np.array([
+            13, 14, 15, 16, 17, 18,   # 0–5
+            19, 20, 21, 22, 23, 24,   # 6–11
+            1,  2,  3,  4,  5,  6,    # 12–17
+            7,  8,  9, 10, 11, 12     # 18–23
+        ])
+
         return new_state
     
     def roll_dice(self):
@@ -182,8 +194,6 @@ class State:
             current_points, opponent_points,
             current_off, opponent_off,
         ], dtype=np.float32)
-
-        print(f"state_tensor type: {state_tensor.dtype}, features type: {features.dtype}")
 
         result = np.concatenate((state_tensor.flatten(), features))
         return result
