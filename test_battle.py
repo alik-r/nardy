@@ -70,7 +70,7 @@ class Agent(nn.Module):
 strong = Agent()
 
 current_directory = Path(__file__).parent
-path = current_directory / "v2" / "td_gammon_selfplay_1260000.pth"
+path = current_directory / "v2" / "td_gammon_selfplay_1295000.pth"
 
 strong.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 

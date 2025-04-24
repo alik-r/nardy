@@ -109,18 +109,24 @@ def main():
     current_directory = Path(__file__).parent
     models_folder = current_directory / "v2"
     model_paths = list(models_folder.glob("*.pth"))
-    
+
+    already_evaluated = 995000
+    new_models = [model_path for model_path in model_paths if int(model_path.stem.split("_")[-1]) > already_evaluated]
     results = []
     with concurrent.futures.ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        future_to_model = {executor.submit(evaluate_model, model_path): model_path for model_path in model_paths}
+        future_to_model = {executor.submit(evaluate_model, model_path): model_path for model_path in new_models}
         for future in concurrent.futures.as_completed(future_to_model):
             result = future.result()
             results.append(result)
 
     output_csv = current_directory / "model_win_rates.csv"
-    with open(output_csv, mode="w", newline="") as csv_file:
+    with open(output_csv, mode="a", newline="") as csv_file:
         writer = csv.writer(csv_file)
-        writer.writerow(["Model", "AgentWins", "RandomWins", "WinRate"])
+
+        # Write header only if the file is empty
+        if csv_file.tell() == 0:
+            writer.writerow(["Model", "AgentWins", "RandomWins", "WinRate"])
+
         for row in results:
             writer.writerow(row)
 
