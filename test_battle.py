@@ -5,6 +5,7 @@ import numpy as np
 from state import State
 from typing import Tuple, List
 from pathlib import Path
+from minimax_agent import minimax_move
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using {device} device")
@@ -22,6 +23,7 @@ class ANN(nn.Module):
             nn.ReLU(),
             nn.Linear(32, 1),
             nn.Sigmoid(),
+            
         )
 
     def forward(self, x):
@@ -66,11 +68,18 @@ class Agent(nn.Module):
             chosen_state = candidate_states[chosen_idx]
             
         return chosen_state
+
+class MinimaxAgent:
+    pass
+
+minimax = MinimaxAgent()
+
+
     
 strong = Agent()
 
 current_directory = Path(__file__).parent
-path = current_directory / "v2" / "td_gammon_selfplay_995000.pth"
+path = current_directory / "v2" / "td_gammon_selfplay_900000.pth"
 
 strong.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 
@@ -87,15 +96,17 @@ random = RandomAgent()
 def test_battle():
     weak_wins = 0
     strong_wins = 0
-    for i in range(1000):
+    for i in range(100):
         print(f"Game {i}, Weak wins: {weak_wins}, Strong wins: {strong_wins}")
-        side = True if i % 2 == 1 else False
+        # side = True if i % 2 == 1 else False
         game = LongNardy()
-        while not game.is_finished():
-            if game.state.is_white == side:
-                agent = random
-            else:
+        while game.is_finished() == 0:
+            if game.state.is_white:
                 agent = strong
+            else: 
+                agent = random
+       
+                
             candidate_states = game.get_states_after_dice()
 
             if not candidate_states:
@@ -103,16 +114,18 @@ def test_battle():
                 game.apply_dice(game.state)
                 continue
 
-            chosen_state = agent.epsilon_greedy(candidate_states)
+            if agent == strong:
+                chosen_state = minimax_move(game, strong, depth=2)
+            else:
+                chosen_state = agent.epsilon_greedy(candidate_states)
+            # chosen_state = agent.epsilon_greedy(candidate_states)
             game.step(chosen_state)
 
-            if game.is_finished():
-                if game.state.is_white == side:
-                    strong_wins += 1
-                else:
-                    weak_wins += 1
-                break
-
+            if game.is_finished() ==  1:
+                strong_wins += 1
+            elif game.is_finished() == -1:
+                weak_wins += 1
+                
             
     print(f"Random wins: {weak_wins}, Strong wins: {strong_wins}")
 

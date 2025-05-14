@@ -97,6 +97,12 @@ class LongNardy:
         # Roll dice to begin the first turn.
         self.state.roll_dice()
 
+    def copy(self):
+        ln = LongNardy()
+        ln.state = self.state.copy()
+        return ln          
+    
+
     # @profile
     def apply_dice(self, state: State) -> List[State]:
         results = []
@@ -339,7 +345,12 @@ class LongNardy:
         """
         The game ends when one player has borne off all 15 pieces.
         """
-        return self.state.white_off == 15 or self.state.black_off == 15
+        if self.state.white_off == 15:
+            return 1
+        elif self.state.black_off == 15:
+            return -1
+        else:
+            return 0
 
 @njit
 def are_pieces_after_pos(is_white: bool, board: np.array, pos: int,
@@ -368,4 +379,3 @@ def _is_illegal(is_white: bool, board: np.array, precalc, lengths) -> bool:
         if consecutive_count > 5 and not are_pieces_after_pos(is_white, board, i, precalc, lengths):
             return True
     return False
-
