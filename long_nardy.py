@@ -255,7 +255,7 @@ class LongNardy:
             for i in range(len(current_state.dice_remaining)):
                 dice = current_state.dice_remaining[i]
                 remaining_dice = current_state.dice_remaining[:i] + current_state.dice_remaining[i+1:]
-
+   
                 valid_move_found = False
 
                 for pos in piece_positions:
@@ -279,6 +279,8 @@ class LongNardy:
                                 config = new_state.board.tobytes()
                                 if config not in result_configs:
                                     new_state.change_turn()
+                                    # print("Appending result with dice_remaining1:", new_state.dice_remaining)
+
                                     results.append(new_state)
                                     result_configs.add(config)
                                 else:
@@ -302,6 +304,8 @@ class LongNardy:
                         config = new_state.board.tobytes()
                         if config not in result_configs:
                             new_state.change_turn()
+                            # print("Appending result with dice_remaining2:", new_state.dice_remaining)
+                            # new_state.pretty_print()
                             results.append(new_state)
                             result_configs.add(config)
                         else:
@@ -313,26 +317,49 @@ class LongNardy:
                 if not valid_move_found:
                     new_state = current_state.copy()
                     new_state.dice_remaining = remaining_dice
+                    new_state._skipped = True  
+
                     if not remaining_dice:
                         config = new_state.board.tobytes()
                         if config not in result_configs:
                             new_state.change_turn()
+                            # print("Appending result with dice_remaining3:", new_state.dice_remaining)
+                            # new_state.pretty_print()
                             results.append(new_state)
                             result_configs.add(config)
                         else:
                             continue
                     else:
                         stack.append(new_state)
+
+        # print("---- Raw Results ----")
+        # for s in results:
+        #     print("Remaining dice:", s.dice_remaining)
+
+        
+        if results:
+            initial_dice_count = len(state.dice_remaining)
+            max_dice_used = max(initial_dice_count - len(s.dice_remaining) for s in results)
+            results = [
+                s for s in results 
+                if (initial_dice_count - len(s.dice_remaining) == max_dice_used)
+                and not getattr(s, "_skipped", False)  # filter out skipped states
+            ]            
+
+
         if not results:
             new_state = state.copy()
             new_state.dice_remaining = []
             new_state.change_turn()
             results.append(new_state)
 
+
         return results
         
     def get_states_after_dice(self) -> List[State]:
         return self.apply_dice(self.state)
+    
+    
 
     def step(self, state: State):
         """

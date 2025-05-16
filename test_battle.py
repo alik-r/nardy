@@ -79,7 +79,7 @@ minimax = MinimaxAgent()
 strong = Agent()
 
 current_directory = Path(__file__).parent
-path = current_directory / "v2" / "td_gammon_selfplay_900000.pth"
+path = current_directory / "v2" / "td_gammon_selfplay_100000.pth"
 
 strong.load_state_dict(torch.load(path, map_location=torch.device('cpu')))
 
@@ -96,7 +96,7 @@ random = RandomAgent()
 def test_battle():
     weak_wins = 0
     strong_wins = 0
-    for i in range(100):
+    for i in range(1):
         print(f"Game {i}, Weak wins: {weak_wins}, Strong wins: {strong_wins}")
         # side = True if i % 2 == 1 else False
         game = LongNardy()
@@ -118,8 +118,12 @@ def test_battle():
                 chosen_state = minimax_move(game, strong, depth=2)
             else:
                 chosen_state = agent.epsilon_greedy(candidate_states)
+                
             # chosen_state = agent.epsilon_greedy(candidate_states)
+            chosen_state.pretty_print()
             game.step(chosen_state)
+            print(chosen_state.dice_remaining)
+
 
             if game.is_finished() ==  1:
                 strong_wins += 1
